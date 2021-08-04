@@ -1,6 +1,14 @@
 #include <windows.h>
 #include <tchar.h>
 
+static TCHAR szWindowClass[] = _T("DesktopApp");
+static TCHAR szTitle[] = _T("Windows Desktop Guided Tour Application");
+
+HINSTANCE hInst;
+
+// callback for messages
+LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
+
 int WINAPI WinMain(
 	_In_ HINSTANCE	hInstance,
 	_In_opt_ HINSTANCE hPrevInstance,
@@ -31,8 +39,8 @@ int WINAPI WinMain(
 		return 1;
 	}
 
-	static TCHAR szWindowClass[] = _T("DesktopApp");
-	static TCHAR szTitle[] = _T("Windows Desktop Guided Tour Application");
+	// store to global var
+	hInst = hInstance;
 
 	// create window handle
 	HWND hWnd = CreateWindowEx(
@@ -88,5 +96,14 @@ LRESULT CALLBACK WndProc(
 		TextOut(hdc, 
 			5, 5, 
 			greeting, _tcslen(greeting));
+		EndPaint(hWnd, &ps);
+		break;
+	case WM_DESTROY:
+		PostQuitMessage(0);
+		break;
+	default:
+		return DefWindowProc(hWnd, message, wParam, lParam);
+		break;
 	}
+	return 0;
 };
