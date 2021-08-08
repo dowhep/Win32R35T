@@ -23,5 +23,8 @@
     <FxCompile Include="shaders.hlsl">
       <Filter>Source Files</Filter>
     </FxCompile>
+    <FxCompile Include="pxshadervoronoi.hlsl">
+      <Filter>Source Files</Filter>
+    </FxCompile>
   </ItemGroup>
 </Project>

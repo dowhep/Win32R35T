@@ -177,6 +177,69 @@ int WINAPI WinMain(
 		assert(false);
 	}
 
+	// create shaders
+	ID3D11VertexShader* vertex_shader_ptr = NULL;
+	ID3D11PixelShader* pixel_shader_ptr = NULL;
+
+	hr = device_ptr->CreateVertexShader(
+		vs_blob_ptr->GetBufferPointer(),
+		vs_blob_ptr->GetBufferSize(),
+		NULL,
+		&vertex_shader_ptr);
+	assert(SUCCEEDED(hr));
+
+	hr = device_ptr->CreatePixelShader(
+		ps_blob_ptr->GetBufferPointer(),
+		ps_blob_ptr->GetBufferSize(),
+		NULL,
+		&pixel_shader_ptr);
+	assert(SUCCEEDED(hr));
+
+	// create input layout
+	ID3D11InputLayout* input_layout_ptr = NULL;
+	D3D11_INPUT_ELEMENT_DESC inputElementDesc[] = {
+		// POS is the POS in shaders
+	  { "POS", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+	  /*
+	  { "COL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+	  { "NOR", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+	  { "TEX", 0, DXGI_FORMAT_R32G32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+	  */
+	};
+	hr = device_ptr->CreateInputLayout(
+		inputElementDesc,
+		ARRAYSIZE(inputElementDesc),
+		vs_blob_ptr->GetBufferPointer(),
+		vs_blob_ptr->GetBufferSize(),
+		&input_layout_ptr);
+	assert(SUCCEEDED(hr));
+
+	// create vertex points (clockwise)
+	float vertex_data_array[] = {
+   0.0f,  0.5f,  0.0f, // point at top
+   0.5f, -0.5f,  0.0f, // point at bottom-right
+  -0.5f, -0.5f,  0.0f, // point at bottom-left
+	};
+	UINT vertex_stride = 3 * sizeof(float);
+	UINT vertex_offset = 0;
+	UINT vertex_count = 3;
+
+	// load vertices
+	ID3D11Buffer* vertex_buffer_ptr = NULL;
+	{ /*** load mesh data into vertex buffer **/
+		D3D11_BUFFER_DESC vertex_buff_descr = {};
+		vertex_buff_descr.ByteWidth = sizeof(vertex_data_array);
+		vertex_buff_descr.Usage = D3D11_USAGE_DEFAULT;
+		vertex_buff_descr.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+		D3D11_SUBRESOURCE_DATA sr_data = { 0 };
+		sr_data.pSysMem = vertex_data_array;
+		HRESULT hr = device_ptr->CreateBuffer(
+			&vertex_buff_descr,
+			&sr_data,
+			&vertex_buffer_ptr);
+		assert(SUCCEEDED(hr));
+	}
+
 	// create a message loop
 	MSG msg;
 	msg.message = WM_NULL;
@@ -193,7 +256,47 @@ int WINAPI WinMain(
 			DispatchMessage(&msg);
 		}
 		else {
+			/* clear the back buffer to cornflower blue for the new frame */
+			float background_colour[4] = {
+			  0x64 / 255.0f, 0x95 / 255.0f, 0xED / 255.0f, 1.0f };
+			device_context_ptr->ClearRenderTargetView(
+				render_target_view_ptr, background_colour);
 
+			// set viewport
+			RECT winRect;
+			GetClientRect(hWnd, &winRect);
+			D3D11_VIEWPORT viewport = {
+			  0.0f,
+			  0.0f,
+			  (FLOAT)(winRect.right - winRect.left),
+			  (FLOAT)(winRect.bottom - winRect.top),
+			  0.0f,
+			  1.0f };
+			device_context_ptr->RSSetViewports(1, &viewport);
+
+			// set output merger
+			device_context_ptr->OMSetRenderTargets(1, &render_target_view_ptr, NULL);
+
+			// set input assembler
+			device_context_ptr->IASetPrimitiveTopology(
+				D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+			device_context_ptr->IASetInputLayout(input_layout_ptr);
+			device_context_ptr->IASetVertexBuffers(
+				0,
+				1,
+				&vertex_buffer_ptr,
+				&vertex_stride,
+				&vertex_offset);
+
+			// set the shaders
+			device_context_ptr->VSSetShader(vertex_shader_ptr, NULL, 0);
+			device_context_ptr->PSSetShader(pixel_shader_ptr, NULL, 0);
+
+			// draw triangle
+			device_context_ptr->Draw(vertex_count, 0);
+
+			// present the frame by swapping buffers
+			swap_chain_ptr->Present(1, 0);
 		}
 
 	}
