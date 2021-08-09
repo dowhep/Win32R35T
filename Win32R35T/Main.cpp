@@ -6,7 +6,8 @@
 #include <d3d11.h>       // D3D interface
 #include <dxgi.h>        // DirectX driver interface
 #include <d3dcompiler.h> // shader compiler
-#include<assert.h>		// assert check and crash when necessary
+#include <assert.h>		// assert check and crash when necessary
+
 
 #pragma comment( lib, "user32" )          // link against the win32 library
 #pragma comment( lib, "d3d11.lib" )       // direct3D library
@@ -218,14 +219,14 @@ int WINAPI WinMain(
 
 	// create vertex points (clockwise)
 	float vertex_data_array[] = {
-  -1.0f, -1.0f,  0.0f, // point at bottom left
-   -1.0f,  1.0f,  0.0f, // point at top left
-   1.0f, 1.0f,  0.0f, // point at top right 
-  -1.0f, -1.0f,  0.0f, // point at bottom left
-   1.0f, 1.0f,  0.0f, // point at top right
-   1.0f,  -1.0f,  0.0f, // point at bottom right
+  -1.0f, -1.0f,  0.0f, 0.0f, 0.0f, // point at bottom left
+   -1.0f,  1.0f,  0.0f, 0.0f, 1.0f, // point at top left
+   1.0f, 1.0f,  0.0f, 1.0f, 1.0f, // point at top right 
+  -1.0f, -1.0f,  0.0f, 0.0f, 0.0f, // point at bottom left
+   1.0f, 1.0f,  0.0f, 1.0f, 1.0f, // point at top right
+   1.0f,  -1.0f,  0.0f, 1.0f, 0.0f, // point at bottom right
 	};
-	UINT vertex_stride = 3 * sizeof(float);
+	UINT vertex_stride = 5 * sizeof(float);
 	UINT vertex_offset = 0;
 	UINT vertex_count = 6;
 

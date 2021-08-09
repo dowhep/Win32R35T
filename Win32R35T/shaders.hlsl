@@ -25,5 +25,5 @@ cbuffer PS_CONSTANT_BUFFER : register(b0)
 float4 ps_main(vs_out input) : SV_TARGET{
     float color = ((fTick / 2) % 256) / 255.0f;
 
-    return float4(color, input.texcoord.y, input.texcoord.x, 1.0); // must return an RGBA colour
+    return float4(color, input.texcoord.x, input.texcoord.y, 1.0); // must return an RGBA colour
 }
