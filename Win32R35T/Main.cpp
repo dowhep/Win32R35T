@@ -7,7 +7,7 @@
 #include <dxgi.h>        // DirectX driver interface
 #include <d3dcompiler.h> // shader compiler
 #include <assert.h>		// assert check and crash when necessary
-
+#include <winuser.h>
 
 #pragma comment( lib, "user32" )          // link against the win32 library
 #pragma comment( lib, "d3d11.lib" )       // direct3D library
@@ -19,7 +19,12 @@ static TCHAR szTitle[] = _T("Windows Desktop Guided Tour Application");
 
 HINSTANCE hInst;
 
-// callback for messages
+// struct
+struct float2 { float x, y; };
+struct int2 { int x, y; };
+
+// predefined functions
+float2 GetMousePosition(HWND hWnd);
 LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 
 // Global Variables
@@ -27,6 +32,8 @@ ID3D11Device* device_ptr = NULL;
 ID3D11DeviceContext* device_context_ptr = NULL;
 IDXGISwapChain* swap_chain_ptr = NULL;
 ID3D11RenderTargetView* render_target_view_ptr = NULL;
+int intWWidth = 384;
+int intWHeight = 432;
 
 int WINAPI WinMain(
 	_In_ HINSTANCE	hInstance,
@@ -68,7 +75,7 @@ int WINAPI WinMain(
 		szTitle,
 		WS_OVERLAPPED | WS_SYSMENU | WS_MINIMIZEBOX,
 		CW_USEDEFAULT, CW_USEDEFAULT,
-		384, 432,
+		intWWidth, intWHeight,
 		NULL,
 		NULL,
 		hInstance,
@@ -251,10 +258,25 @@ int WINAPI WinMain(
 	struct PS_CONSTANT_BUFFER
 	{
 		int fTick;
+		float2 mousepos;
+		int2 resolution;
 	} ;
 
+
+	RECT winRect;
+	GetClientRect(hWnd, &winRect);
+	D3D11_VIEWPORT viewport = {
+	  0.0f,
+	  0.0f,
+	  (FLOAT)(winRect.right - winRect.left),
+	  (FLOAT)(winRect.bottom - winRect.top),
+	  0.0f,
+	  1.0f };
+	device_context_ptr->RSSetViewports(1, &viewport);
 	PS_CONSTANT_BUFFER PsConstData;
 	PsConstData.fTick = 0;
+	PsConstData.mousepos = GetMousePosition(hWnd);
+	PsConstData.resolution = { intWWidth, intWHeight };
 
 	D3D11_BUFFER_DESC cbDesc;
 	cbDesc.ByteWidth = sizeof(PS_CONSTANT_BUFFER) + 0xf & 0xfffffff0; // round constant buffer size to 16 byte boundary
@@ -301,29 +323,18 @@ int WINAPI WinMain(
 			device_context_ptr->Map(constant_buffer_ptr, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedSubresource);
 			PS_CONSTANT_BUFFER* PsConstBuff = reinterpret_cast<PS_CONSTANT_BUFFER*>(mappedSubresource.pData);
 			PsConstBuff->fTick = msPassed;
+			PsConstBuff->mousepos = GetMousePosition(hWnd);
 			device_context_ptr->Unmap(constant_buffer_ptr, 0);
 
 			// debug
-			std::wstring dbstr = std::to_wstring(msPassed);
-			OutputDebugString((dbstr+L"\n").c_str());
+			//std::wstring dbstr = std::to_wstring(msPassed);
+			//OutputDebugString((dbstr+L"\n").c_str());
 			
 			/* clear the back buffer to cornflower blue for the new frame */
 			float background_colour[4] = {
 			  0x64 / 255.0f, 0x95 / 255.0f, 0xED / 255.0f, 1.0f };
 			device_context_ptr->ClearRenderTargetView(
 				render_target_view_ptr, background_colour);
-
-			// set viewport
-			RECT winRect;
-			GetClientRect(hWnd, &winRect);
-			D3D11_VIEWPORT viewport = {
-			  0.0f,
-			  0.0f,
-			  (FLOAT)(winRect.right - winRect.left),
-			  (FLOAT)(winRect.bottom - winRect.top),
-			  0.0f,
-			  1.0f };
-			device_context_ptr->RSSetViewports(1, &viewport);
 
 			// set output merger
 			device_context_ptr->OMSetRenderTargets(1, &render_target_view_ptr, NULL);
@@ -358,6 +369,20 @@ int WINAPI WinMain(
 	
 	return (int) msg.wParam;
 };
+
+float2 GetMousePosition(HWND hWnd) {
+	POINT ptMouse;
+	bool check = GetCursorPos(&ptMouse);
+	if (!check) {
+		return {0.0f, 0.0f};
+	}
+	check = ScreenToClient(hWnd, &ptMouse);
+	if (!check) {
+		return { 0.0f, 0.0f };
+	}
+
+	return { (float)ptMouse.x / intWWidth, (float)ptMouse.y / intWHeight };
+}
 
 LRESULT CALLBACK WndProc(
 	_In_ HWND	hWnd,
