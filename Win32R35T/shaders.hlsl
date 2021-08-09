@@ -23,20 +23,26 @@ float2 random2(float2 inp) {
 
 cbuffer PS_CONSTANT_BUFFER : register(b0)
 {
-    // variable
-    int fTick;
     float2 mousepos;
-
-    // constant
     int2 resolution;
+    // 16 byte
+
+    int fTick;
+    float yoverx;
+    float2 filler;
 };
 
 float4 ps_main(vs_out input) : SV_TARGET{
+    float greyarea = 0.7f;
+
     float3 color = float3(.0f, .0f, .0f);
     float zoom = 7.1f;
     float2 st = input.texcoord;
     st -= 0.5f;
     st *= zoom;
+
+    greyarea -= 0.5f;
+    greyarea *= zoom;
 
     float2 i_st = floor(st);
     float2 f_st = frac(st);
@@ -61,6 +67,16 @@ float4 ps_main(vs_out input) : SV_TARGET{
             }
         }
     }
+    float2 tpointpos = mousepos - 0.5f;
+    tpointpos *= zoom;
+    float2 diff = tpointpos - st;
+    float dist = length(diff);
+
+    if (dist < m_dist) {
+        m_dist = dist;
+        m_point = tpointpos / zoom * 2.0f;
+        m_pointpos = tpointpos;
+    }
     
     float3 color1 = float3(0.058f, 0.198f, 0.815f);
     float3 color2 = float3(1.000f, 0.034f, 0.616f);
@@ -72,7 +88,27 @@ float4 ps_main(vs_out input) : SV_TARGET{
 
     color += color1 * (1.0f - mixval) + color2 * mixval;
     color += dot(m_point, float2(.3f, .6f)) * color3 * 0.596f;
+
+    if (m_pointpos.y > greyarea) {
+        float minc = (color.x + color.y + color.z) * 0.1f;
+        color = float3(minc, minc, minc) + color * 0.45f;
+    }
+
     color += color4 * (m_pointpos.x - m_pointpos.y - st.x + st.y) * 0.010f;
 
-    return float4(color, 1.0); // must return an RGBA colour
+    // mouse
+    //float2 rela = mousepos - input.texcoord;
+    //rela.y *= yoverx;
+    //float boost = 0.1f;
+    //float limit = 0.1f;
+    ////if (length(rela) < limit) color = float3(1.0f, 1.0f, 1.0f);
+    //if (length(rela) < limit) {
+    //    float inc = (1.0f - length(rela) / limit) * boost;
+    //    color += float3(inc, inc, inc);
+    //}
+
+    color = clamp(color, 0.0f, 1.0f);
+    
+
+    return float4(color, 1.0f); // must return an RGBA colour
 }

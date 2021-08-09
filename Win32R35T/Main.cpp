@@ -15,7 +15,7 @@
 #pragma comment( lib, "d3dcompiler.lib" ) // shader compiler
 
 static TCHAR szWindowClass[] = _T("DesktopApp");
-static TCHAR szTitle[] = _T("Windows Desktop Guided Tour Application");
+static TCHAR szTitle[] = _T("R35T");
 
 HINSTANCE hInst;
 
@@ -24,7 +24,8 @@ struct float2 { float x, y; };
 struct int2 { int x, y; };
 
 // predefined functions
-float2 GetMousePosition(HWND hWnd);
+bool GetMousePixelPos(HWND hWnd, POINT* pptMouse);
+float2 ConvertPointToScreenRelSpace(POINT ptMouse);
 LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 
 // Global Variables
@@ -34,6 +35,7 @@ IDXGISwapChain* swap_chain_ptr = NULL;
 ID3D11RenderTargetView* render_target_view_ptr = NULL;
 int intWWidth = 384;
 int intWHeight = 432;
+POINT ptMouse;
 
 int WINAPI WinMain(
 	_In_ HINSTANCE	hInstance,
@@ -253,33 +255,42 @@ int WINAPI WinMain(
 		assert(SUCCEEDED(hr));
 	}
 
-	// create time constant
+	// mouse point setup
+	if (!GetMousePixelPos(hWnd, &ptMouse)) return GetLastError();
+
+	// create constant buffer structure
 	ID3D11Buffer* constant_buffer_ptr = NULL;
 	struct PS_CONSTANT_BUFFER
 	{
-		int fTick;
 		float2 mousepos;
 		int2 resolution;
+
+		int fTick;
+		float yoverx;
+		float2 filler;
 	} ;
 
-
+	// create constant buffer for pixel shader
 	RECT winRect;
 	GetClientRect(hWnd, &winRect);
+	intWWidth = winRect.right - winRect.left;
+	intWHeight = winRect.bottom - winRect.top;
 	D3D11_VIEWPORT viewport = {
 	  0.0f,
 	  0.0f,
-	  (FLOAT)(winRect.right - winRect.left),
-	  (FLOAT)(winRect.bottom - winRect.top),
+	  (FLOAT)(intWWidth),
+	  (FLOAT)(intWHeight),
 	  0.0f,
 	  1.0f };
 	device_context_ptr->RSSetViewports(1, &viewport);
 	PS_CONSTANT_BUFFER PsConstData;
 	PsConstData.fTick = 0;
-	PsConstData.mousepos = GetMousePosition(hWnd);
+	PsConstData.mousepos = ConvertPointToScreenRelSpace(ptMouse);
 	PsConstData.resolution = { intWWidth, intWHeight };
+	PsConstData.yoverx = ((float)intWHeight) / ((float)intWWidth);
 
 	D3D11_BUFFER_DESC cbDesc;
-	cbDesc.ByteWidth = sizeof(PS_CONSTANT_BUFFER) + 0xf & 0xfffffff0; // round constant buffer size to 16 byte boundary
+	cbDesc.ByteWidth = sizeof(PS_CONSTANT_BUFFER); // round constant buffer size to 16 byte boundary
 	cbDesc.Usage = D3D11_USAGE_DYNAMIC;
 	cbDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
 	cbDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
@@ -318,17 +329,22 @@ int WINAPI WinMain(
 			// set logic
 			lpSystemTime = GetTickCount64();
 			int msPassed = (int)((lpSystemTime - lpOriSystemTime) % (ULONGLONG)2147483648);
+			if (!GetMousePixelPos(hWnd, &ptMouse)) return GetLastError();
 			//PsConstData.fTick = (int) ((lpSystemTime - lpOriSystemTime) % (ULONGLONG) 2147483648);
 			D3D11_MAPPED_SUBRESOURCE mappedSubresource;
 			device_context_ptr->Map(constant_buffer_ptr, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedSubresource);
 			PS_CONSTANT_BUFFER* PsConstBuff = reinterpret_cast<PS_CONSTANT_BUFFER*>(mappedSubresource.pData);
 			PsConstBuff->fTick = msPassed;
-			PsConstBuff->mousepos = GetMousePosition(hWnd);
+			PsConstBuff->mousepos = ConvertPointToScreenRelSpace(ptMouse);
+			PsConstBuff->resolution = { intWWidth, intWHeight };
+			PsConstBuff->yoverx = ((float)intWHeight) / ((float)intWWidth);
 			device_context_ptr->Unmap(constant_buffer_ptr, 0);
 
 			// debug
-			//std::wstring dbstr = std::to_wstring(msPassed);
-			//OutputDebugString((dbstr+L"\n").c_str());
+			//float2 test = GetMousePosition(hWnd);
+			//std::wstring dbstr2 = std::to_wstring(test.y);
+			//std::wstring dbstr = std::to_wstring(PsConstBuff->yoverx);
+			//OutputDebugString((dbstr + L"\n").c_str());
 			
 			/* clear the back buffer to cornflower blue for the new frame */
 			float background_colour[4] = {
@@ -370,18 +386,19 @@ int WINAPI WinMain(
 	return (int) msg.wParam;
 };
 
-float2 GetMousePosition(HWND hWnd) {
-	POINT ptMouse;
-	bool check = GetCursorPos(&ptMouse);
+bool GetMousePixelPos(HWND hWnd, POINT* pptMouse) {
+	bool check = GetCursorPos(pptMouse);
 	if (!check) {
-		return {0.0f, 0.0f};
+		return false;
 	}
-	check = ScreenToClient(hWnd, &ptMouse);
+	check = ScreenToClient(hWnd, pptMouse);
 	if (!check) {
-		return { 0.0f, 0.0f };
+		return false;
 	}
+}
 
-	return { (float)ptMouse.x / intWWidth, (float)ptMouse.y / intWHeight };
+float2 ConvertPointToScreenRelSpace(POINT ptMouse) {
+	return { (float)ptMouse.x / intWWidth, 1.0f - (float)ptMouse.y / intWHeight };
 }
 
 LRESULT CALLBACK WndProc(
@@ -394,6 +411,16 @@ LRESULT CALLBACK WndProc(
 	{
 	case WM_DESTROY:
 		PostQuitMessage(0);
+		break;
+	case WM_LBUTTONDOWN:
+		break;
+	case WM_PAINT:
+	{
+		PAINTSTRUCT ps;
+		HDC hdc = BeginPaint(hWnd, &ps);
+
+		EndPaint(hWnd, &ps);
+	}
 		break;
 	default:
 		return DefWindowProc(hWnd, message, wParam, lParam);
