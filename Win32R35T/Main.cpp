@@ -1,6 +1,8 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <tchar.h>
+#include <string>
+#include <stdlib.h>
 #include <d3d11.h>       // D3D interface
 #include <dxgi.h>        // DirectX driver interface
 #include <d3dcompiler.h> // shader compiler
@@ -203,8 +205,8 @@ int WINAPI WinMain(
 	  /*
 	  { "COL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
 	  { "NOR", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-	  { "TEX", 0, DXGI_FORMAT_R32G32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
 	  */
+	  { "TEX", 0, DXGI_FORMAT_R32G32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
 	};
 	hr = device_ptr->CreateInputLayout(
 		inputElementDesc,
@@ -216,13 +218,16 @@ int WINAPI WinMain(
 
 	// create vertex points (clockwise)
 	float vertex_data_array[] = {
-   0.0f,  0.5f,  0.0f, // point at top
-   0.5f, -0.5f,  0.0f, // point at bottom-right
-  -0.5f, -0.5f,  0.0f, // point at bottom-left
+  -1.0f, -1.0f,  0.0f, // point at bottom left
+   -1.0f,  1.0f,  0.0f, // point at top left
+   1.0f, 1.0f,  0.0f, // point at top right 
+  -1.0f, -1.0f,  0.0f, // point at bottom left
+   1.0f, 1.0f,  0.0f, // point at top right
+   1.0f,  -1.0f,  0.0f, // point at bottom right
 	};
 	UINT vertex_stride = 3 * sizeof(float);
 	UINT vertex_offset = 0;
-	UINT vertex_count = 3;
+	UINT vertex_count = 6;
 
 	// load vertices
 	ID3D11Buffer* vertex_buffer_ptr = NULL;
@@ -240,6 +245,37 @@ int WINAPI WinMain(
 		assert(SUCCEEDED(hr));
 	}
 
+	// create time constant
+	ID3D11Buffer* constant_buffer_ptr = NULL;
+	struct PS_CONSTANT_BUFFER
+	{
+		int fTick;
+	} ;
+
+	PS_CONSTANT_BUFFER PsConstData;
+	PsConstData.fTick = 0;
+
+	D3D11_BUFFER_DESC cbDesc;
+	cbDesc.ByteWidth = sizeof(PS_CONSTANT_BUFFER) + 0xf & 0xfffffff0; // round constant buffer size to 16 byte boundary
+	cbDesc.Usage = D3D11_USAGE_DYNAMIC;
+	cbDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+	cbDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+	cbDesc.MiscFlags = 0;
+	cbDesc.StructureByteStride = 0;
+
+	D3D11_SUBRESOURCE_DATA InitData;
+	InitData.pSysMem = &PsConstData;
+	InitData.SysMemPitch = 0;
+	InitData.SysMemSlicePitch = 0;
+
+	hr = device_ptr->CreateBuffer(&cbDesc, &InitData,
+		&constant_buffer_ptr);
+	assert(SUCCEEDED(hr));
+
+	// get time
+	ULONGLONG lpSystemTime;
+	ULONGLONG lpOriSystemTime = GetTickCount64();
+
 	// create a message loop
 	MSG msg;
 	msg.message = WM_NULL;
@@ -256,6 +292,20 @@ int WINAPI WinMain(
 			DispatchMessage(&msg);
 		}
 		else {
+			// set logic
+			lpSystemTime = GetTickCount64();
+			int msPassed = (int)((lpSystemTime - lpOriSystemTime) % (ULONGLONG)2147483648);
+			//PsConstData.fTick = (int) ((lpSystemTime - lpOriSystemTime) % (ULONGLONG) 2147483648);
+			D3D11_MAPPED_SUBRESOURCE mappedSubresource;
+			device_context_ptr->Map(constant_buffer_ptr, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedSubresource);
+			PS_CONSTANT_BUFFER* PsConstBuff = reinterpret_cast<PS_CONSTANT_BUFFER*>(mappedSubresource.pData);
+			PsConstBuff->fTick = msPassed;
+			device_context_ptr->Unmap(constant_buffer_ptr, 0);
+
+			// debug
+			std::wstring dbstr = std::to_wstring(msPassed);
+			OutputDebugString((dbstr+L"\n").c_str());
+			
 			/* clear the back buffer to cornflower blue for the new frame */
 			float background_colour[4] = {
 			  0x64 / 255.0f, 0x95 / 255.0f, 0xED / 255.0f, 1.0f };
@@ -287,6 +337,10 @@ int WINAPI WinMain(
 				&vertex_buffer_ptr,
 				&vertex_stride,
 				&vertex_offset);
+			device_context_ptr->PSSetConstantBuffers(
+				0,
+				1,
+				&constant_buffer_ptr);
 
 			// set the shaders
 			device_context_ptr->VSSetShader(vertex_shader_ptr, NULL, 0);
