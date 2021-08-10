@@ -1,21 +1,33 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <windowsx.h>
 #include <tchar.h>
 #include <string>
 #include <stdlib.h>
 #include <d3d11.h>       // D3D interface
+#include <d2d1.h>
 #include <dxgi.h>        // DirectX driver interface
 #include <d3dcompiler.h> // shader compiler
 #include <assert.h>		// assert check and crash when necessary
 #include <winuser.h>
+#include <dwrite.h>
 
 #pragma comment( lib, "user32" )          // link against the win32 library
 #pragma comment( lib, "d3d11.lib" )       // direct3D library
 #pragma comment( lib, "dxgi.lib" )        // directx graphics interface
 #pragma comment( lib, "d3dcompiler.lib" ) // shader compiler
+#pragma comment( lib, "d2d1.lib")
+#pragma comment( lib, "dwrite.lib") 
 
+static int intWWidth = 384;
+static int intWHeight = 432;
+static const WCHAR sc_txtWork[] = L"Work";
+static const WCHAR sc_txtRest[] = L"Rest";
 static TCHAR szWindowClass[] = _T("DesktopApp");
 static TCHAR szTitle[] = _T("R35T");
+static WCHAR msc_fontName[] = L"";
+static float msc_fontSize = 16.0f;
+static float msc_fontNumSize = 32.0f;
 
 HINSTANCE hInst;
 
@@ -26,6 +38,8 @@ struct int2 { int x, y; };
 // predefined functions
 bool GetMousePixelPos(HWND hWnd, POINT* pptMouse);
 float2 ConvertPointToScreenRelSpace(POINT ptMouse);
+
+// messages
 LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 
 // Global Variables
@@ -33,9 +47,12 @@ ID3D11Device* device_ptr = NULL;
 ID3D11DeviceContext* device_context_ptr = NULL;
 IDXGISwapChain* swap_chain_ptr = NULL;
 ID3D11RenderTargetView* render_target_view_ptr = NULL;
-int intWWidth = 384;
-int intWHeight = 432;
+ID2D1RenderTarget* render2d_target_ptr = NULL;
+ID2D1Factory* factory2d_ptr = NULL;
+IDWriteFactory* factorywrite_ptr = NULL;
+
 POINT ptMouse;
+
 
 int WINAPI WinMain(
 	_In_ HINSTANCE	hInstance,
@@ -109,7 +126,7 @@ int WINAPI WinMain(
 	swap_chain_descr.Windowed = true;
 
 	D3D_FEATURE_LEVEL feature_level;
-	UINT flagsD = D3D11_CREATE_DEVICE_SINGLETHREADED;
+	UINT flagsD = D3D11_CREATE_DEVICE_SINGLETHREADED | D3D11_CREATE_DEVICE_BGRA_SUPPORT;
 #if defined( DEBUG ) || defined( _DEBUG )
 	flagsD |= D3D11_CREATE_DEVICE_DEBUG; // debug outputs
 #endif
@@ -141,6 +158,89 @@ int WINAPI WinMain(
 		framebuffer, 0, &render_target_view_ptr);
 	assert(SUCCEEDED(hr));
 	framebuffer->Release();
+
+	// create 2d render target
+	D2D1CreateFactory(
+		D2D1_FACTORY_TYPE_SINGLE_THREADED, &factory2d_ptr);
+
+	IDXGISurface* framebuffer2d;
+	hr = swap_chain_ptr->GetBuffer(
+		0,
+		__uuidof(IDXGISurface),
+		(void**)&framebuffer2d);
+	assert(SUCCEEDED(hr));
+
+	float dpiX, dpiY;
+
+	//factory2d_ptr->GetDesktopDpi(&dpiX, &dpiY);
+	dpiX = (FLOAT)GetDpiForWindow(GetDesktopWindow());
+	dpiY = dpiX;
+
+	std::wstring dbstr = std::to_wstring(dpiX);
+	OutputDebugString((dbstr + L"\n").c_str());
+
+	const D2D1_RENDER_TARGET_PROPERTIES render2d_target_property = D2D1::RenderTargetProperties(
+		D2D1_RENDER_TARGET_TYPE_DEFAULT,
+		D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED),
+		dpiX,
+		dpiY
+	);
+
+	hr = factory2d_ptr->CreateDxgiSurfaceRenderTarget(
+		framebuffer2d, 
+		&render2d_target_property,
+		&render2d_target_ptr);
+	assert(SUCCEEDED(hr));
+
+	// Create a DirectWrite factory.
+	hr = DWriteCreateFactory(
+		DWRITE_FACTORY_TYPE_SHARED,
+		__uuidof(factorywrite_ptr),
+		reinterpret_cast<IUnknown**>(&factorywrite_ptr)
+	);
+	assert(SUCCEEDED(hr));
+
+	// Create a DirectWrite text format object.
+	IDWriteTextFormat* m_pTextFormat;
+	hr = factorywrite_ptr->CreateTextFormat(
+		msc_fontName,
+		NULL,
+		DWRITE_FONT_WEIGHT_NORMAL,
+		DWRITE_FONT_STYLE_NORMAL,
+		DWRITE_FONT_STRETCH_NORMAL,
+		msc_fontSize,
+		L"", //locale
+		&m_pTextFormat
+	);
+	assert(SUCCEEDED(hr));
+
+	IDWriteTextFormat* m_pNumFormat;
+	hr = factorywrite_ptr->CreateTextFormat(
+		msc_fontName,
+		NULL,
+		DWRITE_FONT_WEIGHT_NORMAL,
+		DWRITE_FONT_STYLE_NORMAL,
+		DWRITE_FONT_STRETCH_NORMAL,
+		msc_fontNumSize,
+		L"", //locale
+		&m_pNumFormat
+	);
+	assert(SUCCEEDED(hr));
+
+	// Center the text horizontally and vertically.
+	m_pTextFormat->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
+	m_pTextFormat->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+	m_pNumFormat->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
+	m_pNumFormat->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+	
+	ID2D1SolidColorBrush* m_pWhiteBrush;
+	hr = render2d_target_ptr->CreateSolidColorBrush(
+		D2D1::ColorF(D2D1::ColorF::White),
+		&m_pWhiteBrush
+	);
+	assert(SUCCEEDED(hr));
+
+	///////////////////////////////////////////////////////////////////////////////////////////////////
 
 	// compile shaders
 	UINT flagsS = D3DCOMPILE_ENABLE_STRICTNESS; 
@@ -377,8 +477,72 @@ int WINAPI WinMain(
 			// draw triangle
 			device_context_ptr->Draw(vertex_count, 0);
 
+			///////////////////////////////////////////////////////////////////////////////////////////
+			
+			// draw 2d parts
+
+			// Retrieve the size of the render target.
+			D2D1_SIZE_F renderTargetSize = render2d_target_ptr->GetSize();
+
+			render2d_target_ptr->BeginDraw();
+
+			render2d_target_ptr->SetTransform(D2D1::Matrix3x2F::Identity());
+
+			const int txtleft = 50;
+			const int txtright = 90;
+			const int padding = 20;
+			const int padding2 = 50;
+
+			const WCHAR sc_txtTestNum1[] = L"45";
+			const WCHAR sc_txtTestNum2[] = L"15";
+
+			render2d_target_ptr->DrawText(
+				sc_txtWork,
+				ARRAYSIZE(sc_txtWork) - 1,
+				m_pTextFormat,
+				D2D1::RectF(txtleft, padding, txtright, padding),
+				m_pWhiteBrush,
+				D2D1_DRAW_TEXT_OPTIONS_NO_SNAP
+			);
+			render2d_target_ptr->DrawText(
+				sc_txtRest,
+				ARRAYSIZE(sc_txtRest) - 1,
+				m_pTextFormat,
+				D2D1::RectF(renderTargetSize.width - txtright, padding, renderTargetSize.width - txtleft, padding),
+				m_pWhiteBrush,
+				D2D1_DRAW_TEXT_OPTIONS_NO_SNAP
+			);
+			render2d_target_ptr->DrawText(
+				sc_txtTestNum1,
+				ARRAYSIZE(sc_txtTestNum1) - 1,
+				m_pNumFormat,
+				D2D1::RectF(txtleft, padding2, txtright, padding2),
+				m_pWhiteBrush,
+				D2D1_DRAW_TEXT_OPTIONS_NO_SNAP
+			);
+			render2d_target_ptr->DrawText(
+				sc_txtTestNum2,
+				ARRAYSIZE(sc_txtTestNum2) - 1,
+				m_pNumFormat,
+				D2D1::RectF(renderTargetSize.width - txtright, padding2, renderTargetSize.width - txtleft, padding2),
+				m_pWhiteBrush,
+				D2D1_DRAW_TEXT_OPTIONS_NO_SNAP
+			);
+
+			//std::wstring dbstr = std::to_wstring(renderTargetSize.width) + L", " + std::to_wstring(renderTargetSize.height);
+			//OutputDebugString((dbstr + L"\n").c_str());
+
+			hr = render2d_target_ptr->EndDraw();
+
+			if (hr == D2DERR_RECREATE_TARGET)
+			{
+				hr = S_OK;
+			}
+			assert(SUCCEEDED(hr));
+
 			// present the frame by swapping buffers
 			swap_chain_ptr->Present(1, 0);
+
 		}
 
 	}
@@ -410,17 +574,10 @@ LRESULT CALLBACK WndProc(
 	switch (message)
 	{
 	case WM_DESTROY:
+		factory2d_ptr->Release();
 		PostQuitMessage(0);
 		break;
 	case WM_LBUTTONDOWN:
-		break;
-	case WM_PAINT:
-	{
-		PAINTSTRUCT ps;
-		HDC hdc = BeginPaint(hWnd, &ps);
-
-		EndPaint(hWnd, &ps);
-	}
 		break;
 	default:
 		return DefWindowProc(hWnd, message, wParam, lParam);
