@@ -23,11 +23,15 @@ static int intWWidth = 384;
 static int intWHeight = 432;
 static const WCHAR sc_txtWork[] = L"Work";
 static const WCHAR sc_txtRest[] = L"Rest";
+static const int numWorkDefault = 45;
+static const int numRestDefault = 15;
 static TCHAR szWindowClass[] = _T("DesktopApp");
 static TCHAR szTitle[] = _T("R35T");
 static WCHAR msc_fontName[] = L"";
 static float msc_fontSize = 16.0f;
 static float msc_fontNumSize = 32.0f;
+static float msc_fontCountdownSize = 53.0f;
+static ID2D1PathGeometry* startBtnTriangle;
 
 HINSTANCE hInst;
 
@@ -35,10 +39,16 @@ HINSTANCE hInst;
 struct float2 { float x, y; };
 struct int2 { int x, y; };
 
+// enum
+enum class clockState { STOPPED, RUNNING };
+enum class textSelected { NONE, WORK, REST };
+enum class mouseInteractables { EMPTY, TEXT_WORK, TEXT_REST, BTN_MAIN };
+
 // predefined functions
 bool GetMousePixelPos(HWND hWnd, POINT* pptMouse);
+bool isPointInRect(D2D1_POINT_2F* ptDIP, const D2D1_RECT_F* rect);
 float2 ConvertPointToScreenRelSpace(POINT ptMouse);
-
+ID2D1PathGeometry* GenTriangleGeometry(D2D1_POINT_2F pt1, D2D1_POINT_2F pt2, D2D1_POINT_2F pt3);
 // messages
 LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 
@@ -51,7 +61,197 @@ ID2D1RenderTarget* render2d_target_ptr = NULL;
 ID2D1Factory* factory2d_ptr = NULL;
 IDWriteFactory* factorywrite_ptr = NULL;
 
+bool isWorking = true;
+int msPassed;
 POINT ptMouse;
+D2D1_POINT_2F ptDIPMouse;
+clockState clkst = clockState::STOPPED;
+textSelected txtSlt = textSelected::NONE;
+mouseInteractables mouseOn = mouseInteractables::EMPTY;
+mouseInteractables mouseDowned = mouseInteractables::EMPTY;
+// helper class
+class DPIScale
+{
+	static float scale;
+
+public:
+	static void Initialize()
+	{
+		FLOAT dpi = (FLOAT)GetDpiForWindow(GetDesktopWindow());
+		scale = dpi / 96.0f;
+	}
+
+	template <typename T>
+	static D2D1_POINT_2F PixelsToDips(T x, T y)
+	{
+		return D2D1::Point2F(static_cast<float>(x) / scale,
+			static_cast<float>(y) / scale);
+	}
+};
+
+float DPIScale::scale = 1.0f;
+
+// helper class: timer
+class MyTimer 
+{
+	const static int msInMin = 60 * 1000;
+private:
+	int secLeft = 0;
+	int destination = 0;
+	int cur = 0;
+	bool isOver = false;
+	std::wstring time;
+	//HANDLE threadHandle;
+	bool isThreadDone = true;
+
+	std::wstring fillLeadZero(std::wstring str, int amt) {
+		if (amt <= str.length()) return str;
+		return std::wstring(amt - str.length(), '0').append(str);
+	}
+
+	void threadedUpdate(int ms) {
+		// check if ended
+		if (destination < ms) {
+			secLeft = 0;
+			time = L"00:00";
+			isOver = true;
+		}
+
+		// check if need to update text
+		else if (destination - ms < secLeft * 1000) {
+			secLeft = (destination - ms) / 1000;
+			time = fillLeadZero(std::to_wstring(secLeft / 60), 2)
+				+ std::wstring(L":")
+				+ fillLeadZero(std::to_wstring(secLeft % 60), 2);
+		}
+
+		isThreadDone = true;
+	}
+
+public:
+	MyTimer() {
+		time = L"00:00";
+	}
+	void Start(int ms, int min) {
+		destination = ms + min * msInMin;
+		secLeft = min * 60;
+		isOver = false;
+	}
+	bool Update(int ms) {
+		//if (threadHandle != NULL) CloseHandle(threadHandle);
+		if (!isOver) {
+			isThreadDone = false;
+			threadedUpdate(ms);
+			//threadHandle = CreateThread(
+			//	0,
+			//	0,
+			//	threadedUpdate,
+			//	&ms,
+			//	0,
+			//	NULL);
+		}
+		return isOver;
+	}
+	void Stop() {
+		isOver = true;
+	}
+	const WCHAR* GetTime() {
+		return time.c_str();
+	}
+	int GetLength() {
+		return 5;
+	}
+};
+
+// work and rest wrapper class
+class mainControl {
+	const float strokeWidth = 3.0f;
+private:
+	bool selected = false;
+	// minute number
+	int minNum;
+	// texts
+	std::wstring txtDesc;
+	std::wstring txtMin;
+	D2D1_RECT_F bound;
+	float padding1, padding2;
+public:
+	mainControl(const WCHAR txtDescription[], int minNumber,
+		D2D1_RECT_F Bound, const float Padding1, const float Padding2) {
+
+		txtDesc = txtDescription;
+		minNum = minNumber;
+		txtMin = std::to_wstring(minNumber);
+		bound = Bound;
+		padding1 = Padding1;
+		padding2 = Padding2;
+
+	}
+	//mainControl(const mainControl& oldCtrl) {
+	//	selected = oldCtrl.selected;
+	//	minNum = oldCtrl.minNum;
+	//	txtDesc = oldCtrl.txtDesc;
+	//	txtMin = oldCtrl.txtMin;
+	//	bound = oldCtrl.bound;
+	//	padding1 = oldCtrl.padding1;
+	//	padding2 = oldCtrl.padding2;
+	//}
+	//~mainControl() {
+	//	delete(&txtDesc);
+	//	delete(&txtMin);
+	//}
+	void Draw(ID2D1RenderTarget* pt_renderTarget2d, ID2D1SolidColorBrush* ptBrush,
+		IDWriteTextFormat* ptDescFormat, IDWriteTextFormat* ptNumFormat) {
+		// draw description
+		pt_renderTarget2d->DrawText(
+			txtDesc.c_str(),
+			txtDesc.size(),
+			ptDescFormat,
+			D2D1::RectF(bound.left, padding1, bound.right, padding1),
+			ptBrush,
+			D2D1_DRAW_TEXT_OPTIONS_NO_SNAP);
+
+		// draw minute number
+		pt_renderTarget2d->DrawText(
+			txtMin.c_str(),
+			txtMin.size(),
+			ptNumFormat,
+			D2D1::RectF(bound.left, padding2, bound.right, padding2),
+			ptBrush,
+			D2D1_DRAW_TEXT_OPTIONS_NO_SNAP);
+
+		// draw surrounding rectangle
+		if (selected) {
+			pt_renderTarget2d->DrawRectangle(
+				&bound,
+				ptBrush,
+				strokeWidth
+			);
+		}
+	}
+
+	// value editing function
+
+	// misc methods
+	void SetSelected(bool Selected) {
+		selected = Selected;
+	}
+	bool IsMouseOver(D2D1_POINT_2F* mouse) {
+		return isPointInRect(mouse, &bound);
+	}
+	int GetValue() {
+		return minNum;
+	}
+};
+
+MyTimer* ptrMyTimer;
+mainControl* ptrCtrlWork;
+mainControl* ptrCtrlRest;
+
+
+
+
+
 
 
 int WINAPI WinMain(
@@ -159,6 +359,8 @@ int WINAPI WinMain(
 	assert(SUCCEEDED(hr));
 	framebuffer->Release();
 
+	///////////////////////////////////////////////////////////////////////////////////////////////////////
+
 	// create 2d render target
 	D2D1CreateFactory(
 		D2D1_FACTORY_TYPE_SINGLE_THREADED, &factory2d_ptr);
@@ -227,11 +429,26 @@ int WINAPI WinMain(
 	);
 	assert(SUCCEEDED(hr));
 
+	IDWriteTextFormat* m_pCountdownFormat;
+	hr = factorywrite_ptr->CreateTextFormat(
+		msc_fontName,
+		NULL,
+		DWRITE_FONT_WEIGHT_NORMAL,
+		DWRITE_FONT_STYLE_NORMAL,
+		DWRITE_FONT_STRETCH_NORMAL,
+		msc_fontCountdownSize,
+		L"", //locale
+		&m_pCountdownFormat
+	);
+	assert(SUCCEEDED(hr));
+
 	// Center the text horizontally and vertically.
 	m_pTextFormat->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
 	m_pTextFormat->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
 	m_pNumFormat->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
 	m_pNumFormat->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+	m_pCountdownFormat->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
+	m_pCountdownFormat->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
 	
 	ID2D1SolidColorBrush* m_pWhiteBrush;
 	hr = render2d_target_ptr->CreateSolidColorBrush(
@@ -239,6 +456,45 @@ int WINAPI WinMain(
 		&m_pWhiteBrush
 	);
 	assert(SUCCEEDED(hr));
+	ID2D1SolidColorBrush* m_pTransparentWhiteBrush;
+	hr = render2d_target_ptr->CreateSolidColorBrush(
+		D2D1::ColorF(D2D1::ColorF::White, 0.6f),
+		&m_pTransparentWhiteBrush
+	);
+	assert(SUCCEEDED(hr));
+
+	const D2D1_SIZE_F renderTargetSize = render2d_target_ptr->GetSize();
+
+	startBtnTriangle = GenTriangleGeometry(
+		D2D1::Point2F(renderTargetSize.width / 2 - 35, renderTargetSize.height / 2 - 25),
+		D2D1::Point2F(renderTargetSize.width / 2 - 35, renderTargetSize.height / 2 + 55),
+		D2D1::Point2F(renderTargetSize.width / 2 + 45, renderTargetSize.height / 2 + 15));
+
+	const D2D1_RECT_F mainRect = D2D1::RectF(renderTargetSize.width / 2 - 50, renderTargetSize.height / 2 - 35,
+		renderTargetSize.width / 2 + 50, renderTargetSize.height / 2 + 65);
+
+	const D2D1_RECT_F rectMainTxt = D2D1::RectF(0, mainRect.top,
+		renderTargetSize.width, mainRect.bottom);
+
+	const float btnPadding = 15.0f;
+
+	const D2D1_RECT_F rectStopBtn = D2D1::RectF(
+		mainRect.left + btnPadding, mainRect.top + btnPadding,
+		mainRect.right - btnPadding, mainRect.bottom - btnPadding);
+	
+	const int txtleft = 40;
+	const int txttop = 10;
+	const int txtbottom = 70;
+	const int txtright = 100;
+	const int padding = 20;
+	const int padding2 = 50;
+
+	ptrCtrlWork = new mainControl(sc_txtWork, numWorkDefault,
+		D2D1::RectF(txtleft, txttop, txtright, txtbottom),
+		padding, padding2);
+	ptrCtrlRest = new mainControl(sc_txtRest, numRestDefault,
+		D2D1::RectF(renderTargetSize.width - txtright, txttop, renderTargetSize.width - txtleft, txtbottom),
+		padding, padding2);
 
 	///////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -409,6 +665,7 @@ int WINAPI WinMain(
 	// get time
 	ULONGLONG lpSystemTime;
 	ULONGLONG lpOriSystemTime = GetTickCount64();
+	ptrMyTimer = new MyTimer();
 
 	// create a message loop
 	MSG msg;
@@ -426,10 +683,40 @@ int WINAPI WinMain(
 			DispatchMessage(&msg);
 		}
 		else {
-			// set logic
+			// update variables
 			lpSystemTime = GetTickCount64();
-			int msPassed = (int)((lpSystemTime - lpOriSystemTime) % (ULONGLONG)2147483648);
+			msPassed = (int)((lpSystemTime - lpOriSystemTime) % (ULONGLONG)2147483648);
 			if (!GetMousePixelPos(hWnd, &ptMouse)) return GetLastError();
+			
+			mouseOn = isPointInRect(&ptDIPMouse, &mainRect) ? mouseInteractables::BTN_MAIN : 
+						  ptrCtrlWork->IsMouseOver(&ptDIPMouse) ? mouseInteractables::TEXT_WORK : 
+						  ptrCtrlRest->IsMouseOver(&ptDIPMouse) ? mouseInteractables::TEXT_REST :
+															  mouseInteractables::EMPTY;
+
+			if (clkst == clockState::RUNNING) {
+				if (ptrMyTimer->Update(msPassed)) {
+					clkst = clockState::STOPPED;
+					isWorking = !isWorking;
+					// TODO: window pop up and play a sound;
+
+
+
+
+
+				};
+			}
+
+
+
+
+
+
+
+
+			///////////////////////////////////////////////////////////////////////////////////
+
+			// draw gpu
+
 			//PsConstData.fTick = (int) ((lpSystemTime - lpOriSystemTime) % (ULONGLONG) 2147483648);
 			D3D11_MAPPED_SUBRESOURCE mappedSubresource;
 			device_context_ptr->Map(constant_buffer_ptr, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedSubresource);
@@ -439,6 +726,7 @@ int WINAPI WinMain(
 			PsConstBuff->resolution = { intWWidth, intWHeight };
 			PsConstBuff->yoverx = ((float)intWHeight) / ((float)intWWidth);
 			device_context_ptr->Unmap(constant_buffer_ptr, 0);
+
 
 			// debug
 			//float2 test = GetMousePosition(hWnd);
@@ -482,52 +770,47 @@ int WINAPI WinMain(
 			// draw 2d parts
 
 			// Retrieve the size of the render target.
-			D2D1_SIZE_F renderTargetSize = render2d_target_ptr->GetSize();
 
 			render2d_target_ptr->BeginDraw();
 
 			render2d_target_ptr->SetTransform(D2D1::Matrix3x2F::Identity());
 
-			const int txtleft = 50;
-			const int txtright = 90;
-			const int padding = 20;
-			const int padding2 = 50;
+			ptrCtrlWork->Draw(render2d_target_ptr, m_pWhiteBrush, m_pTextFormat, m_pNumFormat);
+			ptrCtrlRest->Draw(render2d_target_ptr, m_pWhiteBrush, m_pTextFormat, m_pNumFormat);
 
-			const WCHAR sc_txtTestNum1[] = L"45";
-			const WCHAR sc_txtTestNum2[] = L"15";
 
-			render2d_target_ptr->DrawText(
-				sc_txtWork,
-				ARRAYSIZE(sc_txtWork) - 1,
-				m_pTextFormat,
-				D2D1::RectF(txtleft, padding, txtright, padding),
-				m_pWhiteBrush,
-				D2D1_DRAW_TEXT_OPTIONS_NO_SNAP
-			);
-			render2d_target_ptr->DrawText(
-				sc_txtRest,
-				ARRAYSIZE(sc_txtRest) - 1,
-				m_pTextFormat,
-				D2D1::RectF(renderTargetSize.width - txtright, padding, renderTargetSize.width - txtleft, padding),
-				m_pWhiteBrush,
-				D2D1_DRAW_TEXT_OPTIONS_NO_SNAP
-			);
-			render2d_target_ptr->DrawText(
-				sc_txtTestNum1,
-				ARRAYSIZE(sc_txtTestNum1) - 1,
-				m_pNumFormat,
-				D2D1::RectF(txtleft, padding2, txtright, padding2),
-				m_pWhiteBrush,
-				D2D1_DRAW_TEXT_OPTIONS_NO_SNAP
-			);
-			render2d_target_ptr->DrawText(
-				sc_txtTestNum2,
-				ARRAYSIZE(sc_txtTestNum2) - 1,
-				m_pNumFormat,
-				D2D1::RectF(renderTargetSize.width - txtright, padding2, renderTargetSize.width - txtleft, padding2),
-				m_pWhiteBrush,
-				D2D1_DRAW_TEXT_OPTIONS_NO_SNAP
-			);
+			switch (clkst)
+			{
+			case clockState::STOPPED:
+			{
+				ID2D1SolidColorBrush* m_pStartBtnBrush =
+					mouseOn == mouseInteractables::BTN_MAIN ?
+					m_pWhiteBrush : m_pTransparentWhiteBrush;
+
+				render2d_target_ptr->FillGeometry(
+					startBtnTriangle,
+					m_pStartBtnBrush);
+
+				m_pStartBtnBrush = NULL;
+			}
+				break;
+			case clockState::RUNNING:
+				if (mouseOn == mouseInteractables::BTN_MAIN) {
+					render2d_target_ptr->FillRectangle(&rectStopBtn, m_pWhiteBrush);
+				}
+				else {
+					render2d_target_ptr->DrawText(
+						ptrMyTimer->GetTime(),
+						ptrMyTimer->GetLength(),
+						m_pCountdownFormat,
+						&rectMainTxt,
+						m_pWhiteBrush,
+						D2D1_DRAW_TEXT_OPTIONS_NO_SNAP);
+				}
+				break;
+			default:
+				break;
+			}
 
 			//std::wstring dbstr = std::to_wstring(renderTargetSize.width) + L", " + std::to_wstring(renderTargetSize.height);
 			//OutputDebugString((dbstr + L"\n").c_str());
@@ -559,10 +842,72 @@ bool GetMousePixelPos(HWND hWnd, POINT* pptMouse) {
 	if (!check) {
 		return false;
 	}
+	ptDIPMouse = DPIScale::PixelsToDips(pptMouse->x, pptMouse->y);
+	return true;
 }
 
 float2 ConvertPointToScreenRelSpace(POINT ptMouse) {
 	return { (float)ptMouse.x / intWWidth, 1.0f - (float)ptMouse.y / intWHeight };
+}
+
+ID2D1PathGeometry* GenTriangleGeometry(D2D1_POINT_2F pt1, D2D1_POINT_2F pt2, D2D1_POINT_2F pt3)
+{
+	ID2D1GeometrySink* pSink = NULL;
+	HRESULT hr = S_OK;
+	ID2D1PathGeometry* m_pPathGeometry;
+	// Create a path geometry.
+	assert(SUCCEEDED(hr));
+	hr = factory2d_ptr->CreatePathGeometry
+	(&m_pPathGeometry);
+
+	assert(SUCCEEDED(hr));
+	// Write to the path geometry using the geometry sink.
+	hr = m_pPathGeometry->Open(&pSink);
+
+	assert(SUCCEEDED(hr));
+	pSink->BeginFigure(
+		pt1,
+		D2D1_FIGURE_BEGIN_FILLED
+	);
+
+	pSink->AddLine(pt2);
+
+
+	pSink->AddLine(pt3);
+
+	pSink->EndFigure(D2D1_FIGURE_END_CLOSED);
+
+	hr = pSink->Close();
+
+	if (pSink != NULL) {
+		pSink->Release();
+		pSink = NULL;
+	};
+
+	return m_pPathGeometry;
+}
+
+
+bool isPointInRect(D2D1_POINT_2F* ptDIP, const D2D1_RECT_F* rect) {
+	return (rect->top < ptDIP->y) && (ptDIP->y < rect->bottom) &&
+		(rect->left < ptDIP->x) && (ptDIP->x < rect->right);
+}
+
+void SelectText(textSelected txt) {
+	switch (txt) {
+	case textSelected::WORK:
+		ptrCtrlWork->SetSelected(true);
+		ptrCtrlRest->SetSelected(false);
+		break;
+	case textSelected::REST:
+		ptrCtrlWork->SetSelected(false);
+		ptrCtrlRest->SetSelected(true);
+		break;
+	default:
+		ptrCtrlWork->SetSelected(false);
+		ptrCtrlRest->SetSelected(false);
+		break;
+	}
 }
 
 LRESULT CALLBACK WndProc(
@@ -573,12 +918,66 @@ LRESULT CALLBACK WndProc(
 {
 	switch (message)
 	{
+	case WM_CREATE:
+		if (FAILED(D2D1CreateFactory(
+			D2D1_FACTORY_TYPE_SINGLE_THREADED, &factory2d_ptr)))
+		{
+			return -1;  // Fail CreateWindowEx.
+		}
+		DPIScale::Initialize();
+		return 0;
 	case WM_DESTROY:
 		factory2d_ptr->Release();
+		delete ptrCtrlWork;
+		delete ptrCtrlRest;
+		delete ptrMyTimer;
 		PostQuitMessage(0);
 		break;
 	case WM_LBUTTONDOWN:
+		mouseDowned = mouseOn;
 		break;
+	case WM_LBUTTONUP:
+		if (mouseDowned == mouseOn) {
+			switch (mouseOn) {
+			case mouseInteractables::BTN_MAIN:
+				// convenient to add more states
+				clkst = clkst == clockState::RUNNING ? 
+					clockState::STOPPED : clockState::RUNNING;
+				switch (clkst)
+				{
+				case clockState::STOPPED:
+					isWorking = true;
+					ptrMyTimer->Stop();
+					break;
+				case clockState::RUNNING:
+					ptrMyTimer->Start(msPassed,
+						isWorking ? ptrCtrlWork->GetValue() : ptrCtrlRest->GetValue());
+					break;
+				default:
+					break;
+				}
+				txtSlt = textSelected::NONE;
+				break;
+			case mouseInteractables::TEXT_WORK:
+				txtSlt = textSelected::WORK;
+				break;
+			case mouseInteractables::TEXT_REST:
+				txtSlt = textSelected::REST;
+				break;
+			default:
+				txtSlt = textSelected::NONE;
+				break;
+			}
+			// convenient to add more states
+			SelectText(txtSlt);
+		}
+		break;
+	
+	// TODO: implement time editing system
+
+
+
+
 	default:
 		return DefWindowProc(hWnd, message, wParam, lParam);
 		break;

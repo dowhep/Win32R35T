@@ -76,6 +76,7 @@ float4 ps_main(vs_out input) : SV_TARGET{
         m_dist = dist;
         m_point = tpointpos / zoom * 2.0f;
         m_pointpos = tpointpos;
+        color += 0.15f * sin(fTick / 1000.0f);
     }
     
     float3 color1 = float3(0.058f, 0.198f, 0.815f);
