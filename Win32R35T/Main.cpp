@@ -28,6 +28,8 @@ static int intWWidth = 384;
 static int intWHeight = 432;
 static const WCHAR sc_txtWork[] = L"Work";
 static const WCHAR sc_txtRest[] = L"Rest";
+static const WCHAR sc_WorkSoundLocation[] = L"Work.wav";
+static const WCHAR sc_RestSoundLocation[] = L"Rest.wav";
 static const WCHAR sc_txtWorkMsg[] = L"It's time to work.";
 static const WCHAR sc_txtRestMsg[] = L"It's time to rest.";
 static const WCHAR sc_txtWindowRest[] = L"Resting - R35T";
@@ -58,6 +60,7 @@ bool GetMousePixelPos(HWND hWnd, POINT* pptMouse);
 bool isPointInRect(D2D1_POINT_2F* ptDIP, const D2D1_RECT_F* rect);
 float2 ConvertPointToScreenRelSpace(POINT ptMouse);
 ID2D1PathGeometry* GenTriangleGeometry(D2D1_POINT_2F pt1, D2D1_POINT_2F pt2, D2D1_POINT_2F pt3);
+BOOL FileExists(LPCTSTR szPath);
 // messages
 LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 
@@ -281,7 +284,7 @@ public:
 			txtMin = std::to_wstring(minNum);
 		}
 		else {
-			minNum = 1;
+			minNum = 0;
 			txtMin = L"";
 		}
 	}
@@ -773,8 +776,14 @@ int WINAPI WinMain(
 					clkst = clockState::STOPPED;
 					isWorking = !isWorking;
 					SetWindowText(hWnd, szTitle);
+					LPCWSTR txtSoundfile = isWorking ?
+						//(FileExists(sc_WorkSoundLocation) ? sc_WorkSoundLocation:
+						//	MAKEINTRESOURCE(IDR_WAVE_WORK)) : 
+						//(FileExists(sc_RestSoundLocation) ? sc_WorkSoundLocation :
+						//	MAKEINTRESOURCE(IDR_WAVE_REST));
+						MAKEINTRESOURCE(IDR_WAVE_WORK) : MAKEINTRESOURCE(IDR_WAVE_REST);
 					PlaySound(
-						MAKEINTRESOURCE(isWorking ? IDR_WAVE_WORK : IDR_WAVE_REST),
+						txtSoundfile,
 						hInst,
 						SND_RESOURCE | SND_ASYNC | SND_LOOP | SND_SYSTEM);
 
@@ -1008,6 +1017,14 @@ void SelectText(textSelected txt) {
 		ptrCtrlRest->SetSelected(false);
 		break;
 	}
+}
+
+BOOL FileExists(LPCTSTR szPath)
+{
+	DWORD dwAttrib = GetFileAttributes(szPath);
+
+	return (dwAttrib != INVALID_FILE_ATTRIBUTES &&
+		!(dwAttrib & FILE_ATTRIBUTE_DIRECTORY));
 }
 
 LRESULT CALLBACK WndProc(
