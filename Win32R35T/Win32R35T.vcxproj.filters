@@ -67,8 +67,8 @@
     </Media>
   </ItemGroup>
   <ItemGroup>
-    <FxCompile Include="shaders.hlsl">
+    <CustomBuild Include="shaders.hlsl">
       <Filter>Assets\Shaders</Filter>
-    </FxCompile>
+    </CustomBuild>
   </ItemGroup>
 </Project>
