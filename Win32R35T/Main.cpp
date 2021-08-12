@@ -64,8 +64,8 @@ LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 // Global Variables
 ID3D11Device* device_ptr = NULL;
 ID3D11DeviceContext* device_context_ptr = NULL;
-IDXGISwapChain* swap_chain_ptr = NULL;
 ID3D11RenderTargetView* render_target_view_ptr = NULL;
+IDXGISwapChain* swap_chain_ptr = NULL;
 ID2D1RenderTarget* render2d_target_ptr = NULL;
 ID2D1Factory* factory2d_ptr = NULL;
 IDWriteFactory* factorywrite_ptr = NULL;
@@ -404,165 +404,6 @@ int WINAPI WinMain(
 	assert(SUCCEEDED(hr));
 	framebuffer->Release();
 
-	///////////////////////////////////////////////////////////////////////////////////////////////////////
-
-	// create 2d render target
-	D2D1CreateFactory(
-		D2D1_FACTORY_TYPE_SINGLE_THREADED, &factory2d_ptr);
-
-	IDXGISurface* framebuffer2d;
-	hr = swap_chain_ptr->GetBuffer(
-		0,
-		__uuidof(IDXGISurface),
-		(void**)&framebuffer2d);
-	assert(SUCCEEDED(hr));
-
-	float dpiX, dpiY;
-
-	//factory2d_ptr->GetDesktopDpi(&dpiX, &dpiY);
-	dpiX = (FLOAT)GetDpiForWindow(GetDesktopWindow());
-	dpiY = dpiX;
-
-	std::wstring dbstr = std::to_wstring(dpiX);
-	OutputDebugString((dbstr + L"\n").c_str());
-
-	const D2D1_RENDER_TARGET_PROPERTIES render2d_target_property = D2D1::RenderTargetProperties(
-		D2D1_RENDER_TARGET_TYPE_DEFAULT,
-		D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED),
-		dpiX,
-		dpiY
-	);
-
-	hr = factory2d_ptr->CreateDxgiSurfaceRenderTarget(
-		framebuffer2d, 
-		&render2d_target_property,
-		&render2d_target_ptr);
-	assert(SUCCEEDED(hr));
-
-	// Create a DirectWrite factory.
-	hr = DWriteCreateFactory(
-		DWRITE_FACTORY_TYPE_SHARED,
-		__uuidof(factorywrite_ptr),
-		reinterpret_cast<IUnknown**>(&factorywrite_ptr)
-	);
-	assert(SUCCEEDED(hr));
-
-	// Create a DirectWrite text format object.
-	IDWriteTextFormat* m_pTextFormat;
-	hr = factorywrite_ptr->CreateTextFormat(
-		msc_fontName,
-		NULL,
-		DWRITE_FONT_WEIGHT_NORMAL,
-		DWRITE_FONT_STYLE_NORMAL,
-		DWRITE_FONT_STRETCH_NORMAL,
-		msc_fontSize,
-		L"", //locale
-		&m_pTextFormat
-	);
-	assert(SUCCEEDED(hr));
-
-	IDWriteTextFormat* m_pNumFormat;
-	hr = factorywrite_ptr->CreateTextFormat(
-		msc_fontName,
-		NULL,
-		DWRITE_FONT_WEIGHT_NORMAL,
-		DWRITE_FONT_STYLE_NORMAL,
-		DWRITE_FONT_STRETCH_NORMAL,
-		msc_fontNumSize,
-		L"", //locale
-		&m_pNumFormat
-	);
-	assert(SUCCEEDED(hr));
-
-	IDWriteTextFormat* m_pCountdownFormat;
-	hr = factorywrite_ptr->CreateTextFormat(
-		msc_fontName,
-		NULL,
-		DWRITE_FONT_WEIGHT_NORMAL,
-		DWRITE_FONT_STYLE_NORMAL,
-		DWRITE_FONT_STRETCH_NORMAL,
-		msc_fontCountdownSize,
-		L"", //locale
-		&m_pCountdownFormat
-	);
-	assert(SUCCEEDED(hr));
-
-	IDWriteTextFormat* m_pMainMsgFormat;
-	hr = factorywrite_ptr->CreateTextFormat(
-		msc_fontName,
-		NULL,
-		DWRITE_FONT_WEIGHT_NORMAL,
-		DWRITE_FONT_STYLE_NORMAL,
-		DWRITE_FONT_STRETCH_NORMAL,
-		msc_fontMsgSize,
-		L"", //locale
-		&m_pMainMsgFormat
-	);
-	assert(SUCCEEDED(hr));
-
-	// Center the text horizontally and vertically.
-	m_pTextFormat->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
-	m_pTextFormat->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
-	m_pNumFormat->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
-	m_pNumFormat->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
-	m_pCountdownFormat->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
-	m_pCountdownFormat->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
-	m_pMainMsgFormat->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
-	m_pMainMsgFormat->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
-	
-	ID2D1SolidColorBrush* m_pWhiteBrush;
-	hr = render2d_target_ptr->CreateSolidColorBrush(
-		D2D1::ColorF(D2D1::ColorF::White),
-		&m_pWhiteBrush
-	);
-	assert(SUCCEEDED(hr));
-	ID2D1SolidColorBrush* m_pTransparentWhiteBrush;
-	hr = render2d_target_ptr->CreateSolidColorBrush(
-		D2D1::ColorF(D2D1::ColorF::White, 0.3f),
-		&m_pTransparentWhiteBrush
-	);
-	assert(SUCCEEDED(hr));
-	ID2D1SolidColorBrush* m_pHalfTransWhiteBrush;
-	hr = render2d_target_ptr->CreateSolidColorBrush(
-		D2D1::ColorF(D2D1::ColorF::White, 0.85f),
-		&m_pHalfTransWhiteBrush
-	);
-	assert(SUCCEEDED(hr));
-
-	const D2D1_SIZE_F renderTargetSize = render2d_target_ptr->GetSize();
-
-	startBtnTriangle = GenTriangleGeometry(
-		D2D1::Point2F(renderTargetSize.width / 2 - 35, renderTargetSize.height / 2 - 25),
-		D2D1::Point2F(renderTargetSize.width / 2 - 35, renderTargetSize.height / 2 + 55),
-		D2D1::Point2F(renderTargetSize.width / 2 + 45, renderTargetSize.height / 2 + 15));
-
-	const D2D1_RECT_F mainRect = D2D1::RectF(renderTargetSize.width / 2 - 50, renderTargetSize.height / 2 - 35,
-		renderTargetSize.width / 2 + 50, renderTargetSize.height / 2 + 65);
-
-	const D2D1_RECT_F rectMainTxt = D2D1::RectF(0, mainRect.top,
-		renderTargetSize.width, mainRect.bottom);
-
-	const float btnPadding = 15.0f;
-
-	const D2D1_RECT_F rectStopBtn = D2D1::RectF(
-		mainRect.left + btnPadding, mainRect.top + btnPadding,
-		mainRect.right - btnPadding, mainRect.bottom - btnPadding);
-	
-	const int txtleft = 40;
-	const int txttop = 10;
-	const int txtbottom = 70;
-	const int txtright = 100;
-	const int padding = 20;
-	const int padding2 = 50;
-
-	ptrCtrlWork = new mainControl(sc_txtWork, numWorkDefault,
-		D2D1::RectF(txtleft, txttop, txtright, txtbottom),
-		padding, padding2);
-	ptrCtrlRest = new mainControl(sc_txtRest, numRestDefault,
-		D2D1::RectF(renderTargetSize.width - txtright, txttop, renderTargetSize.width - txtleft, txtbottom),
-		padding, padding2);
-
-	///////////////////////////////////////////////////////////////////////////////////////////////////
 
 	// compile shaders
 	UINT flagsS = D3DCOMPILE_ENABLE_STRICTNESS; 
@@ -727,6 +568,167 @@ int WINAPI WinMain(
 	hr = device_ptr->CreateBuffer(&cbDesc, &InitData,
 		&constant_buffer_ptr);
 	assert(SUCCEEDED(hr));
+
+	///////////////////////////////////////////////////////////////////////////////////////////////////////
+
+	// create 2d render target
+	D2D1CreateFactory(
+		D2D1_FACTORY_TYPE_SINGLE_THREADED, &factory2d_ptr);
+
+	IDXGISurface* framebuffer2d;
+	hr = swap_chain_ptr->GetBuffer(
+		0,
+		__uuidof(IDXGISurface),
+		(void**)&framebuffer2d);
+	assert(SUCCEEDED(hr));
+
+	float dpiX, dpiY;
+
+	//factory2d_ptr->GetDesktopDpi(&dpiX, &dpiY);
+	dpiX = (FLOAT)GetDpiForWindow(GetDesktopWindow());
+	dpiY = dpiX;
+
+	std::wstring dbstr = std::to_wstring(dpiX);
+	OutputDebugString((dbstr + L"\n").c_str());
+
+	const D2D1_RENDER_TARGET_PROPERTIES render2d_target_property = D2D1::RenderTargetProperties(
+		D2D1_RENDER_TARGET_TYPE_DEFAULT,
+		D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED),
+		dpiX,
+		dpiY
+	);
+
+	hr = factory2d_ptr->CreateDxgiSurfaceRenderTarget(
+		framebuffer2d,
+		&render2d_target_property,
+		&render2d_target_ptr);
+	assert(SUCCEEDED(hr));
+
+	// Create a DirectWrite factory.
+	hr = DWriteCreateFactory(
+		DWRITE_FACTORY_TYPE_SHARED,
+		__uuidof(factorywrite_ptr),
+		reinterpret_cast<IUnknown**>(&factorywrite_ptr)
+	);
+	assert(SUCCEEDED(hr));
+
+	// Create a DirectWrite text format object.
+	IDWriteTextFormat* m_pTextFormat;
+	hr = factorywrite_ptr->CreateTextFormat(
+		msc_fontName,
+		NULL,
+		DWRITE_FONT_WEIGHT_NORMAL,
+		DWRITE_FONT_STYLE_NORMAL,
+		DWRITE_FONT_STRETCH_NORMAL,
+		msc_fontSize,
+		L"", //locale
+		&m_pTextFormat
+	);
+	assert(SUCCEEDED(hr));
+
+	IDWriteTextFormat* m_pNumFormat;
+	hr = factorywrite_ptr->CreateTextFormat(
+		msc_fontName,
+		NULL,
+		DWRITE_FONT_WEIGHT_NORMAL,
+		DWRITE_FONT_STYLE_NORMAL,
+		DWRITE_FONT_STRETCH_NORMAL,
+		msc_fontNumSize,
+		L"", //locale
+		&m_pNumFormat
+	);
+	assert(SUCCEEDED(hr));
+
+	IDWriteTextFormat* m_pCountdownFormat;
+	hr = factorywrite_ptr->CreateTextFormat(
+		msc_fontName,
+		NULL,
+		DWRITE_FONT_WEIGHT_NORMAL,
+		DWRITE_FONT_STYLE_NORMAL,
+		DWRITE_FONT_STRETCH_NORMAL,
+		msc_fontCountdownSize,
+		L"", //locale
+		&m_pCountdownFormat
+	);
+	assert(SUCCEEDED(hr));
+
+	IDWriteTextFormat* m_pMainMsgFormat;
+	hr = factorywrite_ptr->CreateTextFormat(
+		msc_fontName,
+		NULL,
+		DWRITE_FONT_WEIGHT_NORMAL,
+		DWRITE_FONT_STYLE_NORMAL,
+		DWRITE_FONT_STRETCH_NORMAL,
+		msc_fontMsgSize,
+		L"", //locale
+		&m_pMainMsgFormat
+	);
+	assert(SUCCEEDED(hr));
+
+	// Center the text horizontally and vertically.
+	m_pTextFormat->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
+	m_pTextFormat->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+	m_pNumFormat->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
+	m_pNumFormat->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+	m_pCountdownFormat->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
+	m_pCountdownFormat->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+	m_pMainMsgFormat->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
+	m_pMainMsgFormat->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+
+	ID2D1SolidColorBrush* m_pWhiteBrush;
+	hr = render2d_target_ptr->CreateSolidColorBrush(
+		D2D1::ColorF(D2D1::ColorF::White),
+		&m_pWhiteBrush
+	);
+	assert(SUCCEEDED(hr));
+	ID2D1SolidColorBrush* m_pTransparentWhiteBrush;
+	hr = render2d_target_ptr->CreateSolidColorBrush(
+		D2D1::ColorF(D2D1::ColorF::White, 0.3f),
+		&m_pTransparentWhiteBrush
+	);
+	assert(SUCCEEDED(hr));
+	ID2D1SolidColorBrush* m_pHalfTransWhiteBrush;
+	hr = render2d_target_ptr->CreateSolidColorBrush(
+		D2D1::ColorF(D2D1::ColorF::White, 0.85f),
+		&m_pHalfTransWhiteBrush
+	);
+	assert(SUCCEEDED(hr));
+
+	const D2D1_SIZE_F renderTargetSize = render2d_target_ptr->GetSize();
+
+	startBtnTriangle = GenTriangleGeometry(
+		D2D1::Point2F(renderTargetSize.width / 2 - 35, renderTargetSize.height / 2 - 25),
+		D2D1::Point2F(renderTargetSize.width / 2 - 35, renderTargetSize.height / 2 + 55),
+		D2D1::Point2F(renderTargetSize.width / 2 + 45, renderTargetSize.height / 2 + 15));
+
+	const D2D1_RECT_F mainRect = D2D1::RectF(renderTargetSize.width / 2 - 50, renderTargetSize.height / 2 - 35,
+		renderTargetSize.width / 2 + 50, renderTargetSize.height / 2 + 65);
+
+	const D2D1_RECT_F rectMainTxt = D2D1::RectF(0, mainRect.top,
+		renderTargetSize.width, mainRect.bottom);
+
+	const float btnPadding = 15.0f;
+
+	const D2D1_RECT_F rectStopBtn = D2D1::RectF(
+		mainRect.left + btnPadding, mainRect.top + btnPadding,
+		mainRect.right - btnPadding, mainRect.bottom - btnPadding);
+
+	const int txtleft = 40;
+	const int txttop = 10;
+	const int txtbottom = 70;
+	const int txtright = 100;
+	const int padding = 20;
+	const int padding2 = 50;
+
+	ptrCtrlWork = new mainControl(sc_txtWork, numWorkDefault,
+		D2D1::RectF(txtleft, txttop, txtright, txtbottom),
+		padding, padding2);
+	ptrCtrlRest = new mainControl(sc_txtRest, numRestDefault,
+		D2D1::RectF(renderTargetSize.width - txtright, txttop,
+			renderTargetSize.width - txtleft, txtbottom),
+		padding, padding2);
+
+	///////////////////////////////////////////////////////////////////////////////////////////////////////
 
 	// get time
 	ULONGLONG lpSystemTime;
