@@ -18,10 +18,42 @@
     <ClCompile Include="Main.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="tray.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="shaders.hlsl">
       <Filter>Source Files</Filter>
     </FxCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="resource.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="tray.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="custommessages.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="MainResource.rc">
+      <Filter>Resource Files</Filter>
+    </ResourceCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <Image Include="D:\Resources\Gimp\Exports\R35T\Win32R35TIcon.ico">
+      <Filter>Resource Files</Filter>
+    </Image>
+  </ItemGroup>
+  <ItemGroup>
+    <Media Include="..\..\..\..\Ableton Projects\Export\R35TRestSound.wav">
+      <Filter>Resource Files</Filter>
+    </Media>
+    <Media Include="..\..\..\..\Ableton Projects\Export\R35TWorkSound.wav">
+      <Filter>Resource Files</Filter>
+    </Media>
   </ItemGroup>
 </Project>

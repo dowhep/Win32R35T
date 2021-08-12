@@ -11,6 +11,10 @@
 #include <assert.h>		// assert check and crash when necessary
 #include <winuser.h>
 #include <dwrite.h>
+#include <mmsystem.h>
+#include "resource.h"
+#include "tray.h"
+#include "custommessages.h"
 
 #pragma comment( lib, "user32" )          // link against the win32 library
 #pragma comment( lib, "d3d11.lib" )       // direct3D library
@@ -18,11 +22,15 @@
 #pragma comment( lib, "d3dcompiler.lib" ) // shader compiler
 #pragma comment( lib, "d2d1.lib")
 #pragma comment( lib, "dwrite.lib") 
+#pragma comment( lib, "Winmm.lib")
 
 static int intWWidth = 384;
 static int intWHeight = 432;
 static const WCHAR sc_txtWork[] = L"Work";
 static const WCHAR sc_txtRest[] = L"Rest";
+static const WCHAR sc_txtWorkMsg[] = L"It's time to work.";
+static const WCHAR sc_txtRestMsg[] = L"It's time to rest.";
+static const WCHAR sc_txtWindowRest[] = L"Resting";
 static const int numWorkDefault = 45;
 static const int numRestDefault = 15;
 static TCHAR szWindowClass[] = _T("DesktopApp");
@@ -31,6 +39,7 @@ static WCHAR msc_fontName[] = L"";
 static float msc_fontSize = 16.0f;
 static float msc_fontNumSize = 32.0f;
 static float msc_fontCountdownSize = 53.0f;
+static float msc_fontMsgSize = 32.0f;
 static ID2D1PathGeometry* startBtnTriangle;
 
 HINSTANCE hInst;
@@ -61,8 +70,11 @@ ID2D1RenderTarget* render2d_target_ptr = NULL;
 ID2D1Factory* factory2d_ptr = NULL;
 IDWriteFactory* factorywrite_ptr = NULL;
 
+bool bHoveredMessage = true;
 bool isWorking = true;
 int msPassed;
+std::wstring tempMsg;
+std::wstring tempTxt;
 POINT ptMouse;
 D2D1_POINT_2F ptDIPMouse;
 clockState clkst = clockState::STOPPED;
@@ -174,6 +186,8 @@ private:
 	std::wstring txtDesc;
 	std::wstring txtMin;
 	D2D1_RECT_F bound;
+	ID2D1PathGeometry* indicatorTriangle;
+
 	float padding1, padding2;
 public:
 	mainControl(const WCHAR txtDescription[], int minNumber,
@@ -186,6 +200,11 @@ public:
 		padding1 = Padding1;
 		padding2 = Padding2;
 
+		float center = (bound.left + bound.right) / 2;
+		indicatorTriangle = GenTriangleGeometry(
+			D2D1::Point2F(center, bound.bottom + 8.0f),
+			D2D1::Point2F(center - 6.0f, bound.bottom + 15.0f),
+			D2D1::Point2F(center + 6.0f, bound.bottom + 15.0f));
 	}
 	//mainControl(const mainControl& oldCtrl) {
 	//	selected = oldCtrl.selected;
@@ -201,7 +220,7 @@ public:
 	//	delete(&txtMin);
 	//}
 	void Draw(ID2D1RenderTarget* pt_renderTarget2d, ID2D1SolidColorBrush* ptBrush,
-		IDWriteTextFormat* ptDescFormat, IDWriteTextFormat* ptNumFormat) {
+		IDWriteTextFormat* ptDescFormat, IDWriteTextFormat* ptNumFormat, bool drawIndicator) {
 		// draw description
 		pt_renderTarget2d->DrawText(
 			txtDesc.c_str(),
@@ -228,13 +247,39 @@ public:
 				strokeWidth
 			);
 		}
+		if (drawIndicator) {
+			pt_renderTarget2d->FillGeometry(
+				indicatorTriangle,
+				ptBrush);
+		}
 	}
 
 	// value editing function
+	void EnterNum(int num) {
+		if (txtMin.size() < 2) {
+			minNum *= 10;
+			minNum += num;
+		}
+		else {
+			minNum = 99;
+		}
+		txtMin = std::to_wstring(minNum);
+	}
+	void EnterBackspace() {
+		if (txtMin.size() > 0) {
+			txtMin.pop_back();
+			minNum /= 10;
+		}
+	}
+
 
 	// misc methods
 	void SetSelected(bool Selected) {
 		selected = Selected;
+		if (!selected) {
+			if (minNum == 0) minNum = 1;
+			txtMin = std::to_wstring(minNum);
+		}
 	}
 	bool IsMouseOver(D2D1_POINT_2F* mouse) {
 		return isPointInRect(mouse, &bound);
@@ -268,12 +313,12 @@ int WINAPI WinMain(
 	wcex.cbClsExtra		= 0;
 	wcex.cbWndExtra		= 0;
 	wcex.hInstance		= hInstance;
-	wcex.hIcon			= LoadIcon(wcex.hInstance, IDI_APPLICATION);
+	wcex.hIcon			= LoadIcon(wcex.hInstance, MAKEINTRESOURCE(IDI_MAINICON));
 	wcex.hCursor		= LoadCursor(NULL, IDC_ARROW);
 	wcex.hbrBackground	= (HBRUSH)(COLOR_WINDOW + 1);
 	wcex.lpszMenuName	= NULL;
 	wcex.lpszClassName	= szWindowClass;
-	wcex.hIconSm		= LoadIcon(wcex.hInstance, IDI_APPLICATION);
+	wcex.hIconSm		= LoadIcon(wcex.hInstance, MAKEINTRESOURCE(IDI_MAINICON));
 
 	if (!RegisterClassEx(&wcex)) {
 		MessageBox(NULL,
@@ -442,6 +487,19 @@ int WINAPI WinMain(
 	);
 	assert(SUCCEEDED(hr));
 
+	IDWriteTextFormat* m_pMainMsgFormat;
+	hr = factorywrite_ptr->CreateTextFormat(
+		msc_fontName,
+		NULL,
+		DWRITE_FONT_WEIGHT_NORMAL,
+		DWRITE_FONT_STYLE_NORMAL,
+		DWRITE_FONT_STRETCH_NORMAL,
+		msc_fontMsgSize,
+		L"", //locale
+		&m_pMainMsgFormat
+	);
+	assert(SUCCEEDED(hr));
+
 	// Center the text horizontally and vertically.
 	m_pTextFormat->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
 	m_pTextFormat->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
@@ -449,6 +507,8 @@ int WINAPI WinMain(
 	m_pNumFormat->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
 	m_pCountdownFormat->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
 	m_pCountdownFormat->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+	m_pMainMsgFormat->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
+	m_pMainMsgFormat->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
 	
 	ID2D1SolidColorBrush* m_pWhiteBrush;
 	hr = render2d_target_ptr->CreateSolidColorBrush(
@@ -458,8 +518,14 @@ int WINAPI WinMain(
 	assert(SUCCEEDED(hr));
 	ID2D1SolidColorBrush* m_pTransparentWhiteBrush;
 	hr = render2d_target_ptr->CreateSolidColorBrush(
-		D2D1::ColorF(D2D1::ColorF::White, 0.6f),
+		D2D1::ColorF(D2D1::ColorF::White, 0.3f),
 		&m_pTransparentWhiteBrush
+	);
+	assert(SUCCEEDED(hr));
+	ID2D1SolidColorBrush* m_pHalfTransWhiteBrush;
+	hr = render2d_target_ptr->CreateSolidColorBrush(
+		D2D1::ColorF(D2D1::ColorF::White, 0.85f),
+		&m_pHalfTransWhiteBrush
 	);
 	assert(SUCCEEDED(hr));
 
@@ -692,18 +758,32 @@ int WINAPI WinMain(
 						  ptrCtrlWork->IsMouseOver(&ptDIPMouse) ? mouseInteractables::TEXT_WORK : 
 						  ptrCtrlRest->IsMouseOver(&ptDIPMouse) ? mouseInteractables::TEXT_REST :
 															  mouseInteractables::EMPTY;
+			if (mouseOn == mouseInteractables::BTN_MAIN) {
+				bHoveredMessage = true;
+			}
 
 			if (clkst == clockState::RUNNING) {
 				if (ptrMyTimer->Update(msPassed)) {
 					clkst = clockState::STOPPED;
 					isWorking = !isWorking;
-					// TODO: window pop up and play a sound;
+					SetWindowText(hWnd, szTitle);
+					PlaySound(
+						MAKEINTRESOURCE(isWorking ? IDR_WAVE_WORK : IDR_WAVE_REST),
+						hInst,
+						SND_RESOURCE | SND_ASYNC | SND_LOOP | SND_SYSTEM);
 
+					ShowWindow(hWnd, SW_SHOW);
+					ShowWindow(hWnd, SW_RESTORE);
+					TrayDeleteIcon(hWnd);
 
-
-
-
-				};
+					bHoveredMessage = false;
+					tempMsg = isWorking ? sc_txtWorkMsg : sc_txtRestMsg;
+				}
+				else if (isWorking) {
+					tempTxt = L"Working: ";
+					tempTxt += ptrMyTimer->GetTime();
+					SetWindowText(hWnd, tempTxt.c_str());
+				}
 			}
 
 
@@ -775,28 +855,37 @@ int WINAPI WinMain(
 
 			render2d_target_ptr->SetTransform(D2D1::Matrix3x2F::Identity());
 
-			ptrCtrlWork->Draw(render2d_target_ptr, m_pWhiteBrush, m_pTextFormat, m_pNumFormat);
-			ptrCtrlRest->Draw(render2d_target_ptr, m_pWhiteBrush, m_pTextFormat, m_pNumFormat);
+			ptrCtrlWork->Draw(render2d_target_ptr, m_pWhiteBrush, m_pTextFormat, m_pNumFormat, isWorking);
+			ptrCtrlRest->Draw(render2d_target_ptr, m_pWhiteBrush, m_pTextFormat, m_pNumFormat, !isWorking);
 
 
 			switch (clkst)
 			{
 			case clockState::STOPPED:
-			{
-				ID2D1SolidColorBrush* m_pStartBtnBrush =
-					mouseOn == mouseInteractables::BTN_MAIN ?
-					m_pWhiteBrush : m_pTransparentWhiteBrush;
+				if (bHoveredMessage) {
+					ID2D1SolidColorBrush* m_pStartBtnBrush =
+						mouseOn == mouseInteractables::BTN_MAIN ?
+						m_pHalfTransWhiteBrush : m_pTransparentWhiteBrush;
 
-				render2d_target_ptr->FillGeometry(
-					startBtnTriangle,
-					m_pStartBtnBrush);
+					render2d_target_ptr->FillGeometry(
+						startBtnTriangle,
+						m_pStartBtnBrush);
 
-				m_pStartBtnBrush = NULL;
-			}
+					m_pStartBtnBrush = NULL;
+				}
+				else {
+					render2d_target_ptr->DrawText(
+						tempMsg.c_str(),
+						tempMsg.size(),
+						m_pMainMsgFormat,
+						&rectMainTxt,
+						m_pWhiteBrush,
+						D2D1_DRAW_TEXT_OPTIONS_NO_SNAP);
+				}
 				break;
 			case clockState::RUNNING:
 				if (mouseOn == mouseInteractables::BTN_MAIN) {
-					render2d_target_ptr->FillRectangle(&rectStopBtn, m_pWhiteBrush);
+					render2d_target_ptr->FillRectangle(&rectStopBtn, m_pHalfTransWhiteBrush);
 				}
 				else {
 					render2d_target_ptr->DrawText(
@@ -925,6 +1014,18 @@ LRESULT CALLBACK WndProc(
 			return -1;  // Fail CreateWindowEx.
 		}
 		DPIScale::Initialize();
+
+		//{
+		//	LPARAM hIcon = (LPARAM)LoadIcon(hInst, MAKEINTRESOURCE(IDI_MAINICON));
+
+		//	//Change both icons to the same icon handle.
+		//	SendMessage(hWnd, WM_SETICON, ICON_SMALL, hIcon);
+		//	SendMessage(hWnd, WM_SETICON, ICON_BIG, hIcon);
+
+		//	//This will ensure that the application icon gets changed too.
+		//	SendMessage(GetWindow(hWnd, GW_OWNER), WM_SETICON, ICON_SMALL, hIcon);
+		//	SendMessage(GetWindow(hWnd, GW_OWNER), WM_SETICON, ICON_BIG, hIcon);
+		//}
 		return 0;
 	case WM_DESTROY:
 		factory2d_ptr->Release();
@@ -934,6 +1035,12 @@ LRESULT CALLBACK WndProc(
 		PostQuitMessage(0);
 		break;
 	case WM_LBUTTONDOWN:
+		// stop all sounds
+		float2 tempMsPos = ConvertPointToScreenRelSpace(ptMouse);
+		if (tempMsPos.x > 0.0f && tempMsPos.x < 1.0f &&
+			tempMsPos.y > 0.0f && tempMsPos.y < 1.0f) {
+			PlaySound(NULL, 0, 0);
+		}
 		mouseDowned = mouseOn;
 		break;
 	case WM_LBUTTONUP:
@@ -947,11 +1054,13 @@ LRESULT CALLBACK WndProc(
 				{
 				case clockState::STOPPED:
 					isWorking = true;
+					SetWindowText(hWnd, szTitle);
 					ptrMyTimer->Stop();
 					break;
 				case clockState::RUNNING:
 					ptrMyTimer->Start(msPassed,
 						isWorking ? ptrCtrlWork->GetValue() : ptrCtrlRest->GetValue());
+					SetWindowText(hWnd, sc_txtWindowRest);
 					break;
 				default:
 					break;
@@ -973,10 +1082,79 @@ LRESULT CALLBACK WndProc(
 		}
 		break;
 	
-	// TODO: implement time editing system
+	case WM_KEYDOWN:
+		if (wParam == VK_RETURN || wParam == VK_ESCAPE) {
+			txtSlt = textSelected::NONE;
+			SelectText(txtSlt);
+		}
+		// not the most efficient coding but serves the purpose
+		else if (wParam >= 0x30 && wParam <= 0x39) {
+			// entered a number key
+			int numInput = wParam - 0x30;
+			if (txtSlt == textSelected::WORK) {
+				ptrCtrlWork->EnterNum(numInput);
+			}
+			else if (txtSlt == textSelected::REST) {
+				ptrCtrlRest->EnterNum(numInput);
+			}
+		}
+		else if (wParam == VK_BACK) {
+			if (txtSlt == textSelected::WORK) {
+				ptrCtrlWork->EnterBackspace();
+			}
+			else if (txtSlt == textSelected::REST) {
+				ptrCtrlRest->EnterBackspace();
+			}
+			// entered a back key
+		}
+		break;
 
+	case WM_KILLFOCUS:
+		txtSlt = textSelected::NONE;
+		SelectText(txtSlt);
+		break;
+	case WM_SIZE:
+		if (wParam == SIZE_MINIMIZED) {
+			TrayDrawIcon(hWnd);
+			ShowWindow(hWnd, SW_HIDE);
+		}
+		break;
+	case WM_TRAYMESSAGE:
+		switch (lParam) {
+		case WM_LBUTTONUP:
+			ShowWindow(hWnd, SW_SHOW);
+			ShowWindow(hWnd, SW_RESTORE);
+			TrayDeleteIcon(hWnd);
+			break;
+		case WM_RBUTTONUP:
+			TrayLoadPopupMenu(hWnd);
+			break;
+		default:
+			return DefWindowProc(hWnd, message, wParam, lParam);
+		}
+		break;
 
-
+	case WM_COMMAND:
+	{
+		WORD wmId = LOWORD(wParam);
+		WORD wmEvent = HIWORD(wParam);
+		// Parse the menu selections:
+		switch (wmId)
+		{
+		case ID_TRAY_SHOW:
+			ShowWindow(hWnd, SW_SHOW);
+			ShowWindow(hWnd, SW_RESTORE);
+			TrayDeleteIcon(hWnd);
+			break;
+		case ID_TRAY_QUIT:
+			TrayDeleteIcon(hWnd);
+			DestroyWindow(hWnd);
+			break;
+		default:
+			return DefWindowProc(hWnd, message, wParam, lParam);
+		}
+	}
+		break;
 
 	default:
 		return DefWindowProc(hWnd, message, wParam, lParam);
