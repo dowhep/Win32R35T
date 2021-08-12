@@ -187,7 +187,9 @@
   </ItemGroup>
   <ItemGroup>
     <Media Include="..\..\..\..\Ableton Projects\Export\R35TRestSound.wav" />
+    <Media Include="..\..\..\..\Ableton Projects\Export\R35TRestSoundV1.1.wav" />
     <Media Include="..\..\..\..\Ableton Projects\Export\R35TWorkSound.wav" />
+    <Media Include="..\..\..\..\Ableton Projects\Export\R35TWorkSoundV1.1.wav" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

@@ -30,7 +30,7 @@ static const WCHAR sc_txtWork[] = L"Work";
 static const WCHAR sc_txtRest[] = L"Rest";
 static const WCHAR sc_txtWorkMsg[] = L"It's time to work.";
 static const WCHAR sc_txtRestMsg[] = L"It's time to rest.";
-static const WCHAR sc_txtWindowRest[] = L"Resting";
+static const WCHAR sc_txtWindowRest[] = L"Resting - R35T";
 static const int numWorkDefault = 45;
 static const int numRestDefault = 15;
 static TCHAR szWindowClass[] = _T("DesktopApp");
@@ -279,6 +279,10 @@ public:
 		if (!selected) {
 			if (minNum == 0) minNum = 1;
 			txtMin = std::to_wstring(minNum);
+		}
+		else {
+			minNum = 1;
+			txtMin = L"";
 		}
 	}
 	bool IsMouseOver(D2D1_POINT_2F* mouse) {
@@ -779,11 +783,16 @@ int WINAPI WinMain(
 					TrayDeleteIcon(hWnd);
 
 					bHoveredMessage = false;
+					SetWindowLongPtr(hWnd, GWL_STYLE,
+						GetWindowLongW(hWnd, GWL_STYLE) & ~WS_MINIMIZEBOX);
+					SetWindowPos(hWnd, HWND_TOPMOST, 0, 0, 0, 0,
+						SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW | SWP_FRAMECHANGED);
 					tempMsg = isWorking ? sc_txtWorkMsg : sc_txtRestMsg;
 				}
 				else if (isWorking) {
 					tempTxt = L"Working: ";
 					tempTxt += ptrMyTimer->GetTime();
+					tempTxt += L" - R35T";
 					SetWindowText(hWnd, tempTxt.c_str());
 				}
 			}
@@ -1041,6 +1050,10 @@ LRESULT CALLBACK WndProc(
 		float2 tempMsPos = ConvertPointToScreenRelSpace(ptMouse);
 		if (tempMsPos.x > 0.0f && tempMsPos.x < 1.0f &&
 			tempMsPos.y > 0.0f && tempMsPos.y < 1.0f) {
+			SetWindowLongPtr(hWnd, GWL_STYLE,
+				GetWindowLongW(hWnd, GWL_STYLE) | WS_MINIMIZEBOX);
+			SetWindowPos(hWnd, HWND_NOTOPMOST, 0, 0, 0, 0,
+				SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW | SWP_FRAMECHANGED);
 			PlaySound(NULL, 0, 0);
 		}
 		mouseDowned = mouseOn;

@@ -65,6 +65,12 @@
     <Media Include="..\..\..\..\Ableton Projects\Export\R35TWorkSound.wav">
       <Filter>Resource Files</Filter>
     </Media>
+    <Media Include="..\..\..\..\Ableton Projects\Export\R35TRestSoundV1.1.wav">
+      <Filter>Resource Files</Filter>
+    </Media>
+    <Media Include="..\..\..\..\Ableton Projects\Export\R35TWorkSoundV1.1.wav">
+      <Filter>Resource Files</Filter>
+    </Media>
   </ItemGroup>
   <ItemGroup>
     <CustomBuild Include="shaders.hlsl">

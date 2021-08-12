@@ -75,9 +75,9 @@ END
 // WAVE
 //
 
-IDR_WAVE_REST           WAVE                    "C:\\Users\\caoga\\Ableton Projects\\Export\\R35TRestSound.wav"
+IDR_WAVE_REST           WAVE                    "C:\\Users\\caoga\\Ableton Projects\\Export\\R35TRestSoundV1.1.wav"
 
-IDR_WAVE_WORK           WAVE                    "C:\\Users\\caoga\\Ableton Projects\\Export\\R35TWorkSound.wav"
+IDR_WAVE_WORK           WAVE                    "C:\\Users\\caoga\\Ableton Projects\\Export\\R35TWorkSoundV1.1.wav"
 
 
 /////////////////////////////////////////////////////////////////////////////
