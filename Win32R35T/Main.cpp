@@ -75,6 +75,8 @@ IDWriteFactory* factorywrite_ptr = NULL;
 
 bool bHoveredMessage = true;
 bool isWorking = true;
+bool isWindOpen = true;
+
 int msPassed;
 std::wstring tempMsg;
 std::wstring tempTxt;
@@ -757,7 +759,7 @@ int WINAPI WinMain(
 			TranslateMessage(&msg);
 			DispatchMessage(&msg);
 		}
-		else {
+		else if (isWindOpen) {
 			// update variables
 			lpSystemTime = GetTickCount64();
 			msPassed = (int)((lpSystemTime - lpOriSystemTime) % (ULONGLONG)2147483648);
@@ -1148,6 +1150,7 @@ LRESULT CALLBACK WndProc(
 	case WM_SIZE:
 		if (wParam == SIZE_MINIMIZED) {
 			TrayDrawIcon(hWnd);
+			isWindOpen = false;
 			ShowWindow(hWnd, SW_HIDE);
 		}
 		break;
@@ -1157,6 +1160,7 @@ LRESULT CALLBACK WndProc(
 			ShowWindow(hWnd, SW_SHOW);
 			ShowWindow(hWnd, SW_RESTORE);
 			TrayDeleteIcon(hWnd);
+			isWindOpen = true;
 			break;
 		case WM_RBUTTONUP:
 			TrayLoadPopupMenu(hWnd);
@@ -1176,6 +1180,7 @@ LRESULT CALLBACK WndProc(
 		case ID_TRAY_SHOW:
 			ShowWindow(hWnd, SW_SHOW);
 			ShowWindow(hWnd, SW_RESTORE);
+			isWindOpen = true;
 			TrayDeleteIcon(hWnd);
 			break;
 		case ID_TRAY_QUIT:
