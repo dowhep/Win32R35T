@@ -759,7 +759,7 @@ int WINAPI WinMain(
 			TranslateMessage(&msg);
 			DispatchMessage(&msg);
 		}
-		else if (isWindOpen) {
+		else {
 			// update variables
 			lpSystemTime = GetTickCount64();
 			msPassed = (int)((lpSystemTime - lpOriSystemTime) % (ULONGLONG)2147483648);
@@ -792,6 +792,7 @@ int WINAPI WinMain(
 					ShowWindow(hWnd, SW_SHOW);
 					ShowWindow(hWnd, SW_RESTORE);
 					TrayDeleteIcon(hWnd);
+					isWindOpen = true;
 
 					bHoveredMessage = false;
 					SetWindowLongPtr(hWnd, GWL_STYLE,
@@ -820,122 +821,128 @@ int WINAPI WinMain(
 			// draw gpu
 
 			//PsConstData.fTick = (int) ((lpSystemTime - lpOriSystemTime) % (ULONGLONG) 2147483648);
-			D3D11_MAPPED_SUBRESOURCE mappedSubresource;
-			device_context_ptr->Map(constant_buffer_ptr, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedSubresource);
-			PS_CONSTANT_BUFFER* PsConstBuff = reinterpret_cast<PS_CONSTANT_BUFFER*>(mappedSubresource.pData);
-			PsConstBuff->fTick = msPassed;
-			PsConstBuff->mousepos = ConvertPointToScreenRelSpace(ptMouse);
-			PsConstBuff->resolution = { intWWidth, intWHeight };
-			PsConstBuff->yoverx = ((float)intWHeight) / ((float)intWWidth);
-			device_context_ptr->Unmap(constant_buffer_ptr, 0);
+			if (isWindOpen) {
+
+				D3D11_MAPPED_SUBRESOURCE mappedSubresource;
+				device_context_ptr->Map(constant_buffer_ptr, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedSubresource);
+				PS_CONSTANT_BUFFER* PsConstBuff = reinterpret_cast<PS_CONSTANT_BUFFER*>(mappedSubresource.pData);
+				PsConstBuff->fTick = msPassed;
+				PsConstBuff->mousepos = ConvertPointToScreenRelSpace(ptMouse);
+				PsConstBuff->resolution = { intWWidth, intWHeight };
+				PsConstBuff->yoverx = ((float)intWHeight) / ((float)intWWidth);
+				device_context_ptr->Unmap(constant_buffer_ptr, 0);
 
 
-			// debug
-			//float2 test = GetMousePosition(hWnd);
-			//std::wstring dbstr2 = std::to_wstring(test.y);
-			//std::wstring dbstr = std::to_wstring(PsConstBuff->yoverx);
-			//OutputDebugString((dbstr + L"\n").c_str());
+				// debug
+				//float2 test = GetMousePosition(hWnd);
+				//std::wstring dbstr2 = std::to_wstring(test.y);
+				//std::wstring dbstr = std::to_wstring(PsConstBuff->yoverx);
+				//OutputDebugString((dbstr + L"\n").c_str());
 			
-			/* clear the back buffer to cornflower blue for the new frame */
-			float background_colour[4] = {
-			  0x64 / 255.0f, 0x95 / 255.0f, 0xED / 255.0f, 1.0f };
-			device_context_ptr->ClearRenderTargetView(
-				render_target_view_ptr, background_colour);
+				/* clear the back buffer to cornflower blue for the new frame */
+				float background_colour[4] = {
+				  0x64 / 255.0f, 0x95 / 255.0f, 0xED / 255.0f, 1.0f };
+				device_context_ptr->ClearRenderTargetView(
+					render_target_view_ptr, background_colour);
 
-			// set output merger
-			device_context_ptr->OMSetRenderTargets(1, &render_target_view_ptr, NULL);
+				// set output merger
+				device_context_ptr->OMSetRenderTargets(1, &render_target_view_ptr, NULL);
 
-			// set input assembler
-			device_context_ptr->IASetPrimitiveTopology(
-				D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-			device_context_ptr->IASetInputLayout(input_layout_ptr);
-			device_context_ptr->IASetVertexBuffers(
-				0,
-				1,
-				&vertex_buffer_ptr,
-				&vertex_stride,
-				&vertex_offset);
-			device_context_ptr->PSSetConstantBuffers(
-				0,
-				1,
-				&constant_buffer_ptr);
+				// set input assembler
+				device_context_ptr->IASetPrimitiveTopology(
+					D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+				device_context_ptr->IASetInputLayout(input_layout_ptr);
+				device_context_ptr->IASetVertexBuffers(
+					0,
+					1,
+					&vertex_buffer_ptr,
+					&vertex_stride,
+					&vertex_offset);
+				device_context_ptr->PSSetConstantBuffers(
+					0,
+					1,
+					&constant_buffer_ptr);
 
-			// set the shaders
-			device_context_ptr->VSSetShader(vertex_shader_ptr, NULL, 0);
-			device_context_ptr->PSSetShader(pixel_shader_ptr, NULL, 0);
+				// set the shaders
+				device_context_ptr->VSSetShader(vertex_shader_ptr, NULL, 0);
+				device_context_ptr->PSSetShader(pixel_shader_ptr, NULL, 0);
 
-			// draw triangle
-			device_context_ptr->Draw(vertex_count, 0);
+				// draw triangle
+				device_context_ptr->Draw(vertex_count, 0);
 
-			///////////////////////////////////////////////////////////////////////////////////////////
+				///////////////////////////////////////////////////////////////////////////////////////////
 			
-			// draw 2d parts
+				// draw 2d parts
 
-			// Retrieve the size of the render target.
+				// Retrieve the size of the render target.
 
-			render2d_target_ptr->BeginDraw();
+				render2d_target_ptr->BeginDraw();
 
-			render2d_target_ptr->SetTransform(D2D1::Matrix3x2F::Identity());
+				render2d_target_ptr->SetTransform(D2D1::Matrix3x2F::Identity());
 
-			ptrCtrlWork->Draw(render2d_target_ptr, m_pWhiteBrush, m_pTextFormat, m_pNumFormat, isWorking);
-			ptrCtrlRest->Draw(render2d_target_ptr, m_pWhiteBrush, m_pTextFormat, m_pNumFormat, !isWorking);
+				ptrCtrlWork->Draw(render2d_target_ptr, m_pWhiteBrush, m_pTextFormat, m_pNumFormat, isWorking);
+				ptrCtrlRest->Draw(render2d_target_ptr, m_pWhiteBrush, m_pTextFormat, m_pNumFormat, !isWorking);
 
 
-			switch (clkst)
-			{
-			case clockState::STOPPED:
-				if (bHoveredMessage) {
-					ID2D1SolidColorBrush* m_pStartBtnBrush =
-						mouseOn == mouseInteractables::BTN_MAIN ?
-						m_pHalfTransWhiteBrush : m_pTransparentWhiteBrush;
+				switch (clkst)
+				{
+				case clockState::STOPPED:
+					if (bHoveredMessage) {
+						ID2D1SolidColorBrush* m_pStartBtnBrush =
+							mouseOn == mouseInteractables::BTN_MAIN ?
+							m_pHalfTransWhiteBrush : m_pTransparentWhiteBrush;
 
-					render2d_target_ptr->FillGeometry(
-						startBtnTriangle,
-						m_pStartBtnBrush);
+						render2d_target_ptr->FillGeometry(
+							startBtnTriangle,
+							m_pStartBtnBrush);
 
-					m_pStartBtnBrush = NULL;
+						m_pStartBtnBrush = NULL;
+					}
+					else {
+						render2d_target_ptr->DrawText(
+							tempMsg.c_str(),
+							tempMsg.size(),
+							m_pMainMsgFormat,
+							&rectMainTxt,
+							m_pWhiteBrush,
+							D2D1_DRAW_TEXT_OPTIONS_NO_SNAP);
+					}
+					break;
+				case clockState::RUNNING:
+					if (mouseOn == mouseInteractables::BTN_MAIN) {
+						render2d_target_ptr->FillRectangle(&rectStopBtn, m_pHalfTransWhiteBrush);
+					}
+					else {
+						render2d_target_ptr->DrawText(
+							ptrMyTimer->GetTime(),
+							ptrMyTimer->GetLength(),
+							m_pCountdownFormat,
+							&rectMainTxt,
+							m_pWhiteBrush,
+							D2D1_DRAW_TEXT_OPTIONS_NO_SNAP);
+					}
+					break;
+				default:
+					break;
 				}
-				else {
-					render2d_target_ptr->DrawText(
-						tempMsg.c_str(),
-						tempMsg.size(),
-						m_pMainMsgFormat,
-						&rectMainTxt,
-						m_pWhiteBrush,
-						D2D1_DRAW_TEXT_OPTIONS_NO_SNAP);
+
+				//std::wstring dbstr = std::to_wstring(renderTargetSize.width) + L", " + std::to_wstring(renderTargetSize.height);
+				//OutputDebugString((dbstr + L"\n").c_str());
+
+				hr = render2d_target_ptr->EndDraw();
+
+				if (hr == D2DERR_RECREATE_TARGET)
+				{
+					hr = S_OK;
 				}
-				break;
-			case clockState::RUNNING:
-				if (mouseOn == mouseInteractables::BTN_MAIN) {
-					render2d_target_ptr->FillRectangle(&rectStopBtn, m_pHalfTransWhiteBrush);
-				}
-				else {
-					render2d_target_ptr->DrawText(
-						ptrMyTimer->GetTime(),
-						ptrMyTimer->GetLength(),
-						m_pCountdownFormat,
-						&rectMainTxt,
-						m_pWhiteBrush,
-						D2D1_DRAW_TEXT_OPTIONS_NO_SNAP);
-				}
-				break;
-			default:
-				break;
+				assert(SUCCEEDED(hr));
+
+				// present the frame by swapping buffers
+				swap_chain_ptr->Present(1, 0);
 			}
-
-			//std::wstring dbstr = std::to_wstring(renderTargetSize.width) + L", " + std::to_wstring(renderTargetSize.height);
-			//OutputDebugString((dbstr + L"\n").c_str());
-
-			hr = render2d_target_ptr->EndDraw();
-
-			if (hr == D2DERR_RECREATE_TARGET)
-			{
-				hr = S_OK;
+			else {
+				Sleep(5);
 			}
-			assert(SUCCEEDED(hr));
-
-			// present the frame by swapping buffers
-			swap_chain_ptr->Present(1, 0);
 
 		}
 
