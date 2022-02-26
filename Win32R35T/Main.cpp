@@ -42,6 +42,8 @@ static float msc_fontSize = 16.0f;
 static float msc_fontNumSize = 32.0f;
 static float msc_fontCountdownSize = 53.0f;
 static float msc_fontMsgSize = 32.0f;
+static float frameTimeNum = 50;
+static float frameTimeDen = 3;
 static ID2D1PathGeometry* startBtnTriangle;
 
 HINSTANCE hInst;
@@ -78,6 +80,7 @@ bool isWorking = true;
 bool isWindOpen = true;
 
 int msPassed;
+int nextFrame = 0;
 std::wstring tempMsg;
 std::wstring tempTxt;
 POINT ptMouse;
@@ -185,8 +188,10 @@ class mainControl {
 	const float strokeWidth = 3.0f;
 private:
 	bool selected = false;
+	bool edited = false;
 	// minute number
 	int minNum;
+	int lastMinNum;
 	// texts
 	std::wstring txtDesc;
 	std::wstring txtMin;
@@ -200,6 +205,7 @@ public:
 
 		txtDesc = txtDescription;
 		minNum = minNumber;
+		lastMinNum = minNum;
 		txtMin = std::to_wstring(minNumber);
 		bound = Bound;
 		padding1 = Padding1;
@@ -261,6 +267,7 @@ public:
 
 	// value editing function
 	void EnterNum(int num) {
+		edited = true;
 		if (txtMin.size() < 2) {
 			minNum *= 10;
 			minNum += num;
@@ -271,6 +278,7 @@ public:
 		txtMin = std::to_wstring(minNum);
 	}
 	void EnterBackspace() {
+		edited = true;
 		if (txtMin.size() > 0) {
 			txtMin.pop_back();
 			minNum /= 10;
@@ -282,10 +290,18 @@ public:
 	void SetSelected(bool Selected) {
 		selected = Selected;
 		if (!selected) {
+			//OutputDebugString((edited ? L"true" : L"false"));
+
+			if (!edited) minNum = lastMinNum;
+			else lastMinNum = minNum;
+			edited = false;
 			if (minNum == 0) minNum = 1;
 			txtMin = std::to_wstring(minNum);
+
+			//OutputDebugString(txtMin.c_str());
 		}
 		else {
+			lastMinNum = minNum;
 			minNum = 0;
 			txtMin = L"";
 		}
@@ -822,6 +838,14 @@ int WINAPI WinMain(
 
 			//PsConstData.fTick = (int) ((lpSystemTime - lpOriSystemTime) % (ULONGLONG) 2147483648);
 			if (isWindOpen) {
+				
+				/*if (msPassed < nextFrame) {
+					Sleep(nextFrame - msPassed - 1);
+					while (msPassed < nextFrame) {};
+				}
+				int sPassed = msPassed / 1000;
+				int msInSec = msPassed % 1000;
+				nextFrame = (msInSec * frameTimeDen / frameTimeNum + 1) * frameTimeNum / frameTimeDen + sPassed * 1000;*/
 
 				D3D11_MAPPED_SUBRESOURCE mappedSubresource;
 				device_context_ptr->Map(constant_buffer_ptr, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedSubresource);
@@ -1065,6 +1089,15 @@ LRESULT CALLBACK WndProc(
 		//}
 		return 0;
 	case WM_DESTROY:
+		// debug
+		// #region
+		WCHAR buf[100];
+		SYSTEMTIME st;
+		GetLocalTime(&st);
+		wsprintfW(buf, L"%.2u:%.2u:%.2u", st.wHour, st.wMinute, st.wSecond);
+		MessageBox(NULL, buf, L"Ended Unexpectedly", 0x00000000L);
+		// #region
+		
 		factory2d_ptr->Release();
 		delete ptrCtrlWork;
 		delete ptrCtrlRest;
@@ -1126,6 +1159,10 @@ LRESULT CALLBACK WndProc(
 	case WM_KEYDOWN:
 		if (wParam == VK_RETURN || wParam == VK_ESCAPE) {
 			txtSlt = textSelected::NONE;
+			SelectText(txtSlt);
+		} 
+		else if (wParam == VK_TAB) {
+			txtSlt = (txtSlt == textSelected::WORK) ? textSelected::REST : textSelected::WORK;
 			SelectText(txtSlt);
 		}
 		// not the most efficient coding but serves the purpose
