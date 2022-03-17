@@ -1095,7 +1095,7 @@ LRESULT CALLBACK WndProc(
 		SYSTEMTIME st;
 		GetLocalTime(&st);
 		wsprintfW(buf, L"%.2u:%.2u:%.2u", st.wHour, st.wMinute, st.wSecond);
-		//MessageBox(NULL, buf, L"Ended Unexpectedly", 0x00000000L);
+		MessageBox(NULL, buf, L"Ended Unexpectedly", 0x00000000L);
 		// #region
 		
 		factory2d_ptr->Release();
