@@ -155,11 +155,12 @@ float4 ps_main(vs_out input) : SV_TARGET{
         float mixcolor = (distToEdge / AARadius - 1.0f) * -0.5f;
 
         float3 color2 = getColor(m_pointpos2, m_point2, st, zoom);
-        color2 = checkGrey(color2, m_pointpos2, greyarea, greyRange);
 
         if (mouseDist <= length(m_diff2)) {
             color2 += 0.080f * sin(fTick * frequency) + colorMouse;
         }
+        
+        color2 = checkGrey(color2, m_pointpos2, greyarea, greyRange);
     
 
         color = color * (1.0f - mixcolor) + color2 * mixcolor;
