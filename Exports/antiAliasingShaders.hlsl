@@ -60,6 +60,9 @@ float3 checkGrey(float3 color, float2 m_pointpos, float greyarea, float greyRang
     return color;
 }
 
+float sqrlen(float2 x) {
+    return dot(x, x);
+}
 
 float4 ps_main(vs_out input) : SV_TARGET{
     float greyarea = 0.7f;
@@ -68,7 +71,7 @@ float4 ps_main(vs_out input) : SV_TARGET{
 
     float AARadius = 0.002f;
 
-    float3 color = float3(.0f, .0f, .0f);
+    // float3 color = float3(.0f, .0f, .0f);
     float3 colorMouse = float3(0.050f, 0.050f, 0.050f);
     float zoom = 6.9f;
     float2 st = input.texcoord;
@@ -86,9 +89,9 @@ float4 ps_main(vs_out input) : SV_TARGET{
     float2 f_st = frac(st);
 
     float2 mouseDiff = (mousepos - 0.5f) * zoom - st;
-    float mouseDist = length(mouseDiff);
+    float mouseSqrDist = sqrlen(mouseDiff);
     float2 m_diff = mouseDiff;
-    float m_dist = mouseDist;
+    float m_sqrDist = mouseSqrDist;
     float2 m_point = (mousepos - 0.5f) * 2.0f;
     float2 m_pointpos = m_point * 0.5f * zoom;
 
@@ -109,10 +112,10 @@ float4 ps_main(vs_out input) : SV_TARGET{
             step = step / length(step);
             step *= AARadius;
 
-            float dist = length(diff);
+            float sqrDist = sqrlen(diff);
 
-            if (dist < m_dist) {
-                if (length(m_diff + step) < length(diff + step)) {
+            if (sqrDist < m_sqrDist) {
+                if (sqrlen(m_diff + step) < sqrlen(diff + step)) {
                     onEdge = true;
                     m_diff2 = m_diff;
                     m_point2 = m_point;
@@ -121,12 +124,12 @@ float4 ps_main(vs_out input) : SV_TARGET{
                     onEdge = false;
                 }
 
-                m_dist = dist;
+                m_sqrDist = sqrDist;
                 m_diff = diff;
                 m_point = tpoint;
                 m_pointpos = tpointpos;
             } else {
-                if (length(diff - step) < length(m_diff - step)) {
+                if (sqrlen(diff - step) < sqrlen(m_diff - step)) {
                     onEdge = true;
                     m_diff2 = diff;
                     m_point2 = tpoint;
@@ -136,12 +139,13 @@ float4 ps_main(vs_out input) : SV_TARGET{
             
         }
     }
+    
+    float3 color = getColor(m_pointpos, m_point, st, zoom);
 
-    if (mouseDist <= m_dist) {
+    if (mouseSqrDist == m_sqrDist) {
         color += 0.080f * sin(fTick * frequency) + colorMouse;
     }
-    
-    color += getColor(m_pointpos, m_point, st, zoom);
+
     color = checkGrey(color, m_pointpos, greyarea, greyRange);
     
     // anti-aliasing
@@ -154,9 +158,11 @@ float4 ps_main(vs_out input) : SV_TARGET{
 
         float mixcolor = (distToEdge / AARadius - 1.0f) * -0.5f;
 
+        // return float4(mixcolor, mixcolor, mixcolor, 1.0f);
+
         float3 color2 = getColor(m_pointpos2, m_point2, st, zoom);
 
-        if (mouseDist <= length(m_diff2)) {
+        if (mouseSqrDist == sqrlen(m_diff2)) {
             color2 += 0.080f * sin(fTick * frequency) + colorMouse;
         }
         
